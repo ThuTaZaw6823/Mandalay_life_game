@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Mandalay Life — Model Showroom</title>
+    <style>
+        :root {
+            font-family: system-ui, Arial, sans-serif;
+            color: #f6f0e5;
+            background: #152932
+        }
+
+        * {
+            box-sizing: border-box
+        }
+
+        body {
+            margin: 0;
+            overflow: hidden
+        }
+
+        canvas {
+            display: block;
+            width: 100vw;
+            height: 100vh
+        }
+
+        .toolbar {
+            position: fixed;
+            left: 24px;
+            top: 22px;
+            right: 24px;
+            display: flex;
+            gap: 12px;
+            justify-content: space-between;
+            align-items: center;
+            z-index: 3;
+            pointer-events: none
+        }
+
+        .brand {
+            display: grid;
+            gap: 5px
+        }
+
+        .brand b {
+            font-size: 20px;
+            letter-spacing: .08em
+        }
+
+        .brand small {
+            color: #bdcfd0;
+            letter-spacing: .1em;
+            font-size: 10px
+        }
+
+        .controls {
+            display: flex;
+            gap: 9px;
+            align-items: center;
+            pointer-events: auto
+        }
+
+        button,
+        select,
+        a {
+            background: #213f4c;
+            border: 1px solid #ffffff3a;
+            color: #fff5df;
+            border-radius: 10px;
+            padding: 12px 14px;
+            font: 600 13px system-ui;
+            cursor: pointer
+        }
+
+        select {
+            min-width: min(42vw, 210px)
+        }
+
+        a {
+            text-decoration: none;
+            pointer-events: auto
+        }
+
+        .hint {
+            position: fixed;
+            bottom: 20px;
+            left: 24px;
+            right: 24px;
+            display: flex;
+            justify-content: space-between;
+            gap: 10px;
+            color: #d4dede;
+            font-size: 12px;
+            pointer-events: none
+        }
+
+        #error {
+            position: fixed;
+            top: 80px;
+            left: 24px;
+            background: #7c2830;
+            padding: 12px 18px;
+            border-radius: 10px;
+            display: none
+        }
+
+        @media(max-width:700px) {
+            .toolbar {
+                left: 12px;
+                top: 10px;
+                right: 12px;
+                align-items: flex-start
+            }
+
+            .brand b {
+                font-size: 14px
+            }
+
+            .controls {
+                flex-wrap: wrap;
+                justify-content: flex-end
+            }
+
+            .controls button,
+            .controls select {
+                padding: 8px;
+                font-size: 12px
+            }
+
+            .hint {
+                font-size: 10px
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="toolbar">
+        <div class="brand"><b>MANDALAY LIFE</b><small>3D MODEL SHOWROOM · V4.2</small></div>
+        <div class="controls"><a href="./index.html">← PLAY GAME</a><button id="prev"
+                aria-label="Previous model">◀</button><select id="modelSelect"
+                aria-label="3D model selection"></select><button id="next" aria-label="Next model">▶</button></div>
+    </div>
+    <div id="error" role="alert"></div>
+    <div class="hint"><span>DRAG TO ROTATE · SCROLL TO ZOOM</span><span id="modelName">Loading...</span></div>
+    <script type="module" src="/src/showroom.js"></script>
+</body>
+
+</html>
