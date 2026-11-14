@@ -1,14 +1,25 @@
+/* Mandalay Life V7
+   Desktop + Mobile Cross-Platform Layout */
+
 :root {
     font-family: Inter, 'Segoe UI', system-ui, sans-serif;
-    color: #f3f6f4;
+    color: #f3f7f5;
     background: #142936;
-    --panel: rgba(17, 35, 47, .88);
-    --edge: rgba(255, 255, 255, .15);
+
+    --panel: rgba(17, 35, 47, .91);
+    --edge: rgba(255, 255, 255, .16);
     --gold: #f5c77a;
+    --muted: #c4d4d2;
+
+    --safe-t: env(safe-area-inset-top, 0px);
+    --safe-b: env(safe-area-inset-bottom, 0px);
+    --safe-l: env(safe-area-inset-left, 0px);
+    --safe-r: env(safe-area-inset-right, 0px);
 }
 
 * {
     box-sizing: border-box;
+    -webkit-tap-highlight-color: transparent;
 }
 
 html,
@@ -20,9 +31,9 @@ body {
 }
 
 body {
-    touch-action: none;
     user-select: none;
-    -webkit-tap-highlight-color: transparent;
+    touch-action: none;
+    overscroll-behavior: none;
 }
 
 button {
@@ -30,85 +41,98 @@ button {
     cursor: pointer;
 }
 
-#app,
-#viewport {
+#app {
     position: fixed;
     inset: 0;
-}
-
-#app {
+    height: 100dvh;
     overflow: hidden;
 }
 
 #viewport {
+    position: absolute;
+    inset: 0;
     width: 100%;
     height: 100%;
     display: block;
     touch-action: none;
 }
 
+.hidden {
+    display: none !important;
+}
+
+/* Common */
+
 .glass {
     background: var(--panel);
     border: 1px solid var(--edge);
-    box-shadow: 0 8px 22px #09192145;
-    backdrop-filter: blur(9px);
-    -webkit-backdrop-filter: blur(9px);
+    box-shadow: 0 8px 22px rgba(0, 0, 0, .25);
+    backdrop-filter: blur(7px);
+    -webkit-backdrop-filter: blur(7px);
 }
 
-/* Desktop brand */
+/* Brand */
+
 .brandPanel {
     position: fixed;
     z-index: 10;
-    top: 16px;
     left: 18px;
+    top: 16px;
     display: flex;
     align-items: center;
     gap: 9px;
-    border-radius: 15px;
     padding: 8px 12px;
+    border-radius: 14px;
 }
 
 .brandLogo {
-    width: 34px;
-    height: 34px;
     display: grid;
     place-items: center;
+    flex: 0 0 34px;
+    height: 34px;
     border-radius: 10px;
+    color: #233745;
     background: var(--gold);
-    color: #223644;
     font-weight: 900;
-    font-size: 23px;
+    font-size: 22px;
+}
+
+.brandText {
+    min-width: 0;
 }
 
 .brandText h1 {
     font-size: 14px;
+    letter-spacing: .08em;
     margin: 0;
-    letter-spacing: .09em;
     white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .brandText p {
     font-size: 8px;
+    letter-spacing: .08em;
+    color: var(--muted);
     margin: 4px 0 0;
-    letter-spacing: .11em;
-    color: #cbdad8;
     white-space: nowrap;
 }
 
 /* Top HUD */
+
 .topCenter {
     position: fixed;
-    z-index: 10;
-    top: 16px;
     right: 18px;
+    top: 16px;
+    z-index: 10;
     display: flex;
-    align-items: stretch;
+    align-items: flex-start;
     gap: 7px;
 }
 
 .topCard {
-    border-radius: 13px;
-    padding: 8px 11px;
+    padding: 8px 10px;
+    border-radius: 12px;
     min-width: 78px;
 }
 
@@ -117,8 +141,8 @@ button {
 }
 
 .timeCard {
-    min-width: 83px;
     text-align: center;
+    min-width: 83px;
 }
 
 .weatherCard {
@@ -126,7 +150,7 @@ button {
 }
 
 .walletCard {
-    min-width: 95px;
+    min-width: 94px;
 }
 
 .jobsCard {
@@ -135,43 +159,41 @@ button {
 
 .topLabel {
     font-size: 8px;
-    letter-spacing: .09em;
-    color: #c3d1d2;
-    font-weight: 700;
+    font-weight: 750;
+    letter-spacing: .08em;
+    color: var(--muted);
 }
 
 .topValue {
-    margin-top: 6px;
     font-size: 12px;
-    font-weight: 800;
+    font-weight: 850;
+    margin-top: 6px;
 }
 
 .timeValue {
-    margin-top: 3px;
     font-size: 22px;
-    line-height: 1;
-    color: #f9d48c;
     font-weight: 900;
+    line-height: 1.1;
+    margin-top: 4px;
+    color: var(--gold);
 }
 
 .timeSub {
-    margin-top: 3px;
     font-size: 8px;
-    font-weight: 700;
-    color: #b8dece;
+    color: #a6d7c5;
+    font-weight: 800;
+    margin-top: 3px;
+}
+
+.moneyValue,
+.jobsValue {
+    font-size: 20px;
+    font-weight: 900;
+    margin-top: 5px;
 }
 
 .moneyValue {
-    margin-top: 5px;
-    font-size: 20px;
-    font-weight: 850;
-    color: #f9d48c;
-}
-
-.jobsValue {
-    margin-top: 5px;
-    font-size: 20px;
-    font-weight: 850;
+    color: var(--gold);
 }
 
 .helpFab {
@@ -179,19 +201,20 @@ button {
     height: 39px;
     border-radius: 50%;
     color: white;
-    font-weight: 900;
     font-size: 18px;
+    font-weight: 900;
 }
 
-/* Mission HUD */
+/* Mission */
+
 .objectiveCard {
     position: fixed;
     z-index: 10;
-    top: 112px;
     left: 18px;
+    top: 112px;
     width: 245px;
     padding: 14px;
-    border-radius: 15px;
+    border-radius: 14px;
 }
 
 .objectiveHeader {
@@ -199,75 +222,74 @@ button {
     align-items: center;
     gap: 7px;
     font-size: 9px;
-    font-weight: 800;
-    letter-spacing: .10em;
-    color: #c9d9d7;
+    font-weight: 850;
+    letter-spacing: .09em;
 }
 
 .objectiveDot {
     width: 7px;
     height: 7px;
     border-radius: 50%;
-    background: #80dfac;
-    box-shadow: 0 0 0 3px #80dfac30;
+    background: #82dfad;
+    box-shadow: 0 0 0 3px #82dfad25;
 }
 
 .objectiveCard h2 {
-    margin: 12px 0 6px;
     font-size: 21px;
+    margin: 12px 0 6px;
     line-height: 1.15;
 }
 
 .objectiveCard p {
-    margin: 0;
     font-size: 11px;
-    line-height: 1.4;
-    color: #d1dddd;
+    color: var(--muted);
+    margin: 0;
+    line-height: 1.45;
 }
 
 .progressWrap {
-    margin-top: 13px;
     height: 5px;
+    margin-top: 13px;
+    background: #ffffff2b;
+    border-radius: 20px;
     overflow: hidden;
-    border-radius: 10px;
-    background: #ffffff28;
 }
 
 .progressFill {
-    width: 30%;
     height: 100%;
     background: var(--gold);
-    border-radius: inherit;
+    border-radius: 20px;
+    transition: width .18s ease;
 }
 
 .objectiveFooter {
+    margin-top: 10px;
     display: flex;
     justify-content: space-between;
     gap: 8px;
-    margin-top: 10px;
     font-size: 8px;
-    color: #cedddd;
+    line-height: 1.35;
 }
 
 /* Minimap */
+
 .minimapCard {
     position: fixed;
-    z-index: 10;
-    top: 113px;
     right: 18px;
+    top: 113px;
+    z-index: 10;
     width: 197px;
     padding: 10px;
-    border-radius: 15px;
+    border-radius: 14px;
 }
 
 .minimapTop,
 .minimapLegend {
     display: flex;
     justify-content: space-between;
-    gap: 6px;
-    align-items: center;
+    gap: 4px;
     font-size: 9px;
-    font-weight: 750;
+    font-weight: 800;
 }
 
 .liveDot {
@@ -277,31 +299,27 @@ button {
 #minimap {
     display: block;
     width: 100%;
-    height: auto;
     aspect-ratio: 1;
+    height: auto;
     margin: 8px 0;
-    border-radius: 9px;
-    background: #8eaa8d;
+    border-radius: 8px;
+    background: #92aa8d;
 }
 
-.minimapLegend {
-    font-size: 9px;
-    color: #d2e3db;
-}
+/* Player / Vehicle Status */
 
-/* Bottom status */
 .statusCard {
     position: fixed;
-    z-index: 10;
-    bottom: 20px;
     left: 18px;
+    bottom: 20px;
+    z-index: 10;
     display: flex;
     align-items: center;
     gap: 9px;
     width: 318px;
     min-height: 61px;
     padding: 8px 11px;
-    border-radius: 14px;
+    border-radius: 13px;
 }
 
 .statusIcon {
@@ -312,35 +330,37 @@ button {
     border-radius: 10px;
     background: var(--gold);
     color: #293847;
-    font-size: 23px;
+    font-size: 22px;
 }
 
 .statusText {
-    min-width: 0;
     flex: 1;
+    min-width: 0;
 }
 
 .statusMain {
     font-size: 12px;
-    font-weight: 850;
     line-height: 1.2;
+    font-weight: 900;
+    overflow-wrap: anywhere;
 }
 
 .statusSub {
-    margin-top: 4px;
     font-size: 9px;
-    color: #bfcccc;
-    line-height: 1.3;
+    margin-top: 4px;
+    color: var(--muted);
+    line-height: 1.25;
 }
 
 .interactionMini {
-    max-width: 111px;
+    max-width: 110px;
     font-size: 9px;
     line-height: 1.35;
     color: #f5e5c8;
 }
 
-/* Compact shortcut bar */
+/* Desktop Shortcuts */
+
 .shortcutBar {
     position: fixed;
     z-index: 10;
@@ -348,121 +368,119 @@ button {
     left: 347px;
     right: 18px;
     min-height: 43px;
+    padding: 6px;
     display: flex;
     align-items: center;
     justify-content: center;
-    flex-wrap: nowrap;
     gap: 5px;
-    padding: 6px;
-    border-radius: 12px;
     overflow: hidden;
+    border-radius: 12px;
 }
 
 .keyTip {
     display: inline-flex;
     align-items: center;
-    white-space: nowrap;
     gap: 4px;
     padding: 5px 7px;
-    font-size: 9px;
     border-radius: 7px;
-    color: #dce7e4;
     background: #ffffff12;
+    font-size: 9px;
+    white-space: nowrap;
 }
 
 .keyTip b {
-    color: #f8d69d;
     font-size: 9px;
+    color: var(--gold);
 }
 
 .keyTip:nth-child(n+7) {
     display: none;
 }
 
-/* Toast */
+/* Notification */
+
 .toast {
     position: fixed;
     z-index: 25;
-    top: 19%;
     left: 50%;
-    transform: translateX(-50%) translateY(-6px);
-    background: #17303fe8;
-    color: #fff8de;
-    border: 1px solid #ffffff40;
-    border-radius: 10px;
-    padding: 11px 15px;
-    font-size: 12px;
-    font-weight: 750;
+    top: 19%;
+    transform: translate(-50%, -6px);
     opacity: 0;
-    transition: .2s;
     pointer-events: none;
+    padding: 11px 15px;
+    max-width: 84vw;
+    border-radius: 12px;
+    background: #17303fee;
+    border: 1px solid #ffffff40;
+    color: #fff8de;
+    text-align: center;
+    font-size: 12px;
+    font-weight: 800;
+    transition: opacity .2s, transform .2s;
 }
 
 .toast.show {
     opacity: 1;
-    transform: translateX(-50%);
-}
-
-.hidden {
-    display: none !important;
+    transform: translate(-50%, 0);
 }
 
 /* Start / Help */
+
 .overlay {
     position: fixed;
-    z-index: 40;
     inset: 0;
+    z-index: 40;
     display: flex;
-    align-items: center;
     justify-content: center;
+    align-items: center;
     padding: 16px;
-    background: #0b202caa;
-    backdrop-filter: blur(10px);
+    background: #0b202ccc;
+    backdrop-filter: blur(8px);
 }
 
 .overlayCard {
     width: min(680px, 94vw);
     max-height: 90dvh;
     overflow: auto;
-    padding: 28px;
+    padding: 27px;
     border-radius: 20px;
 }
 
 .overlayCard h2 {
     margin: 0 0 12px;
-    font-size: clamp(25px, 3vw, 38px);
+    font-size: clamp(23px, 3vw, 36px);
 }
 
 .overlayCard p {
-    color: #d4e0dc;
     font-size: 14px;
-    line-height: 1.7;
+    color: var(--muted);
+    line-height: 1.6;
 }
 
 .overlayActions {
     display: flex;
-    gap: 10px;
     flex-wrap: wrap;
-    margin-top: 22px;
+    gap: 10px;
+    margin-top: 20px;
 }
 
 .primaryBtn,
 .secondaryBtn {
-    border-radius: 10px;
     padding: 12px 17px;
+    border-radius: 10px;
     font-weight: 850;
     border: 0;
 }
 
 .primaryBtn {
-    background: #f1bc69;
+    background: var(--gold);
     color: #233f48;
 }
 
 .secondaryBtn {
-    background: #ffffff1b;
-    border: 1px solid #ffffff3d;
     color: white;
+    background: #ffffff19;
+    border: 1px solid #ffffff40;
 }
 
 .overlayHints {
@@ -483,40 +501,43 @@ button {
 
 .helpGrid {
     display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 15px 25px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px 22px;
 }
 
 .helpGrid h3 {
-    margin: 14px 0 6px;
     font-size: 13px;
+    margin: 12px 0 6px;
 }
 
 .helpGrid ul {
+    font-size: 12px;
+    line-height: 1.6;
+    color: #cad9d7;
     margin: 0;
     padding-left: 18px;
-    color: #cad9d7;
-    font-size: 12px;
-    line-height: 1.65;
 }
+
+/* Mobile hidden on PC */
 
 .mobileHud {
     display: none;
 }
 
-/* Medium screens */
-@media (max-width: 1100px) {
+/* Smaller desktop windows */
+
+@media (pointer: fine) and (hover: hover) and (max-width: 1000px) {
+
+    .weatherCard {
+        min-width: 104px;
+    }
+
     .topCenter {
         gap: 5px;
     }
 
     .topCard {
-        min-width: 60px;
         padding: 7px 8px;
-    }
-
-    .weatherCard {
-        min-width: 100px;
     }
 
     .statusCard {
@@ -532,12 +553,92 @@ button {
     }
 }
 
-/* Mobile */
-@media (max-width: 780px) {
+@media (pointer: fine) and (hover: hover) and (max-width: 740px) {
+
+    .brandText p,
+    .weatherCard,
+    .jobsCard {
+        display: none;
+    }
+
     .brandPanel {
-        top: calc(9px + env(safe-area-inset-top, 0px));
-        left: 9px;
+        left: 8px;
+    }
+
+    .topCenter {
+        right: 8px;
+    }
+
+    .objectiveCard {
+        top: 83px;
+        left: 8px;
+        width: min(210px, 45vw);
+    }
+
+    .minimapCard {
+        top: 83px;
+        right: 8px;
+        width: min(150px, 31vw);
+    }
+
+    .statusCard {
+        left: 8px;
+        bottom: 12px;
+        width: min(230px, 45vw);
+    }
+
+    .interactionMini {
+        display: none;
+    }
+
+    .shortcutBar {
+        left: calc(min(230px, 45vw) + 16px);
+        right: 8px;
+        bottom: 15px;
+    }
+}
+
+/* Touch devices: Portrait + Landscape */
+
+@media (pointer: coarse),
+(any-pointer: coarse),
+(hover: none) {
+
+    .shortcutBar {
+        display: none !important;
+    }
+
+    .mobileHud {
+        display: block !important;
+        position: fixed;
+        inset: 0;
+        z-index: 16;
+        pointer-events: none;
+    }
+
+    .mobileHud .touchJoystick,
+    .mobileHud .touchCamera,
+    .mobileHud .mobileButtons {
+        pointer-events: auto;
+        touch-action: none;
+    }
+
+    .glass {
+        backdrop-filter: none;
+        -webkit-backdrop-filter: none;
+    }
+
+    .brandPanel {
+        top: calc(8px + var(--safe-t));
+        left: calc(8px + var(--safe-l));
         padding: 6px 8px;
+        gap: 7px;
+    }
+
+    .brandLogo {
+        flex-basis: 30px;
+        height: 30px;
+        font-size: 19px;
     }
 
     .brandText h1 {
@@ -548,28 +649,33 @@ button {
         font-size: 7px;
     }
 
-    .brandLogo {
-        width: 30px;
-        height: 30px;
-        font-size: 20px;
-    }
-
     .topCenter {
-        top: calc(9px + env(safe-area-inset-top, 0px));
-        right: 9px;
+        top: calc(8px + var(--safe-t));
+        right: calc(8px + var(--safe-r));
+        gap: 5px;
     }
 
-    .weatherCard,
-    .jobsCard {
-        display: none;
+    .topCard {
+        min-width: 0;
+        padding: 6px 8px;
+        border-radius: 10px;
     }
 
     .timeCard {
-        min-width: 65px;
+        min-width: 64px;
     }
 
     .walletCard {
         min-width: 70px;
+    }
+
+    .weatherCard {
+        min-width: 98px;
+    }
+
+    .jobsCard,
+    .locationCard {
+        display: none;
     }
 
     .topLabel {
@@ -578,39 +684,57 @@ button {
 
     .timeValue,
     .moneyValue {
-        font-size: 16px;
+        font-size: 17px;
+    }
+
+    .timeSub {
+        font-size: 7px;
+    }
+
+    .topValue {
+        font-size: 10px;
     }
 
     .helpFab {
-        width: 32px;
-        height: 32px;
+        width: 33px;
+        height: 33px;
+        font-size: 16px;
     }
 
     .objectiveCard {
-        top: calc(75px + env(safe-area-inset-top, 0px));
-        left: 9px;
-        width: min(210px, 54vw);
+        left: calc(8px + var(--safe-l));
+        width: 205px;
         padding: 10px;
+        border-radius: 12px;
+    }
+
+    .objectiveHeader {
+        font-size: 8px;
     }
 
     .objectiveCard h2 {
         font-size: 17px;
-        margin: 8px 0 4px;
+        margin: 9px 0 4px;
     }
 
     .objectiveCard p {
         font-size: 10px;
     }
 
+    .progressWrap {
+        margin-top: 10px;
+    }
+
     .objectiveFooter {
+        margin-top: 8px;
         font-size: 7px;
     }
 
     .minimapCard {
-        top: calc(76px + env(safe-area-inset-top, 0px));
-        right: 9px;
-        width: min(132px, 30vw);
+        right: calc(8px + var(--safe-r));
+        width: 126px;
         padding: 7px;
+        border-radius: 12px;
     }
 
     .minimapTop,
@@ -618,18 +742,23 @@ button {
         font-size: 7px;
     }
 
+    #minimap {
+        margin: 5px 0;
+    }
+
     .statusCard {
-        left: 9px;
-        bottom: calc(147px + env(safe-area-inset-bottom, 0px));
-        width: min(290px, 65vw);
-        padding: 8px;
-        min-height: 48px;
+        left: calc(8px + var(--safe-l));
+        width: 238px;
+        min-height: 46px;
+        padding: 7px 9px;
+        gap: 7px;
+        border-radius: 12px;
     }
 
     .statusIcon {
-        flex-basis: 29px;
-        height: 29px;
-        font-size: 16px;
+        flex-basis: 30px;
+        height: 30px;
+        font-size: 17px;
     }
 
     .statusMain {
@@ -641,80 +770,71 @@ button {
         font-size: 8px;
     }
 
-    .shortcutBar {
+    .interactionMini {
         display: none;
     }
 
-    .mobileHud {
-        display: block;
-        position: fixed;
-        inset: 0;
-        z-index: 16;
-        pointer-events: none;
-    }
+    /* Joystick */
 
     .touchJoystick {
         position: absolute;
-        left: calc(14px + env(safe-area-inset-left, 0px));
-        bottom: calc(18px + env(safe-area-inset-bottom, 0px));
-        width: 118px;
-        height: 118px;
-        pointer-events: auto;
-        touch-action: none;
+        width: 112px;
+        height: 112px;
+        border-radius: 50%;
     }
 
     .joystickBase {
         position: absolute;
         inset: 0;
         border-radius: 50%;
-        background: #142c41a9;
+        background: #142c41b8;
         border: 1px solid #ffffff55;
     }
 
     .joystickKnob {
         position: absolute;
-        width: 50px;
-        height: 50px;
-        left: calc(50% - 25px);
-        top: calc(50% - 25px);
+        left: 50%;
+        top: 50%;
+        width: 46px;
+        height: 46px;
+        margin: -23px 0 0 -23px;
         border-radius: 50%;
-        background: #edbd74;
-        border: 3px solid #fff6;
-        box-shadow: 0 3px 10px #0008;
+        background: var(--gold);
+        border: 2px solid #ffffff88;
+        box-shadow: 0 4px 12px #0006;
+        pointer-events: none;
     }
+
+    /* Camera */
 
     .touchCamera {
         position: absolute;
-        right: calc(13px + env(safe-area-inset-right, 0px));
-        bottom: calc(172px + env(safe-area-inset-bottom, 0px));
-        width: 68px;
-        height: 68px;
-        border-radius: 50%;
         display: grid;
         place-items: center;
-        font-weight: 850;
+        width: 60px;
+        height: 60px;
+        border-radius: 50%;
         font-size: 10px;
-        pointer-events: auto;
-        touch-action: none;
+        font-weight: 900;
     }
+
+    /* Action buttons */
 
     .mobileButtons {
         position: absolute;
-        right: calc(10px + env(safe-area-inset-right, 0px));
-        bottom: calc(18px + env(safe-area-inset-bottom, 0px));
-        width: 152px;
         display: grid;
-        grid-template-columns: repeat(2, 1fr);
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        width: 146px;
         gap: 6px;
-        pointer-events: auto;
     }
 
     .mobileBtn {
-        min-height: 40px;
+        min-width: 0;
+        min-height: 39px;
         border-radius: 10px;
+        border: 1px solid #ffffff44;
         color: white;
-        background: #152f43e8;
-        border: 1px solid #fff4;
+        background: #152f43ee;
         font-size: 10px;
         font-weight: 850;
         touch-action: none;
@@ -722,49 +842,271 @@ button {
 
     .mobileBtnPrimary,
     .mobileBtn.pressed {
+        background: var(--gold);
         color: #263840;
-        background: #f2bf71;
+    }
+
+    .overlayCard {
+        padding: 17px;
+    }
+
+    .overlayCard p {
+        font-size: 12px;
     }
 
     .helpGrid {
         grid-template-columns: 1fr;
-        gap: 4px;
-    }
-
-    .overlayCard {
-        padding: 18px;
+        gap: 5px;
     }
 }
 
-@media (max-width: 390px) {
+/* Phone portrait */
+
+@media (pointer: coarse) and (orientation: portrait),
+(any-pointer: coarse) and (orientation: portrait),
+(hover: none) and (orientation: portrait) {
+
     .brandText p {
         display: none;
     }
 
+    .brandText h1 {
+        font-size: 10px;
+    }
+
+    .weatherCard {
+        display: none;
+    }
+
     .objectiveCard {
-        top: 71px;
+        top: calc(84px + var(--safe-t));
+        width: min(206px, 53vw);
     }
 
     .minimapCard {
+        top: calc(137px + var(--safe-t));
+        width: min(123px, 29vw);
+    }
+
+    .statusCard {
+        bottom: calc(177px + var(--safe-b));
+        width: min(232px, 58vw);
+    }
+
+    .touchJoystick {
+        left: calc(14px + var(--safe-l));
+        bottom: calc(20px + var(--safe-b));
+    }
+
+    .touchCamera {
+        right: calc(15px + var(--safe-r));
+        bottom: calc(195px + var(--safe-b));
+    }
+
+    .mobileButtons {
+        right: calc(11px + var(--safe-r));
+        bottom: calc(18px + var(--safe-b));
+    }
+
+    .v7-extra-buttons {
+        right: calc(11px + var(--safe-r)) !important;
+        bottom: calc(240px + var(--safe-b)) !important;
+    }
+}
+
+/* Phone landscape */
+
+@media (pointer: coarse) and (orientation: landscape),
+(any-pointer: coarse) and (orientation: landscape),
+(hover: none) and (orientation: landscape) {
+
+    .brandPanel {
+        top: calc(7px + var(--safe-t));
+    }
+
+    .topCenter {
+        top: calc(7px + var(--safe-t));
+    }
+
+    .objectiveCard {
+        top: calc(70px + var(--safe-t));
+        width: min(200px, 28vw);
+    }
+
+    .minimapCard {
+        top: calc(70px + var(--safe-t));
         width: 108px;
     }
 
     .statusCard {
-        width: 180px;
+        bottom: calc(126px + var(--safe-b));
+        width: 199px;
     }
 
-    .interactionMini {
-        display: none;
+    .statusSub {
+        font-size: 7px;
+    }
+
+    .touchJoystick {
+        left: calc(12px + var(--safe-l));
+        bottom: calc(12px + var(--safe-b));
+        width: 96px;
+        height: 96px;
+    }
+
+    .touchCamera {
+        right: calc(155px + var(--safe-r));
+        bottom: calc(28px + var(--safe-b));
+        width: 50px;
+        height: 50px;
+    }
+
+    .mobileButtons {
+        right: calc(10px + var(--safe-r));
+        bottom: calc(10px + var(--safe-b));
+        width: 136px;
+        gap: 5px;
+    }
+
+    .mobileBtn {
+        min-height: 31px;
+        font-size: 9px;
+        border-radius: 8px;
+    }
+
+    .v7-extra-buttons {
+        right: calc(153px + var(--safe-r)) !important;
+        bottom: calc(83px + var(--safe-b)) !important;
+        max-height: 37dvh !important;
+    }
+
+    .overlayCard {
+        max-height: 87dvh;
+    }
+
+    .helpGrid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .helpGrid ul {
+        font-size: 10px;
     }
 }
 
-@media (max-height: 530px) and (min-width: 781px) {
-    .minimapCard {
-        top: 80px;
-        width: 160px;
+/* Small portrait phones */
+
+@media (pointer: coarse) and (orientation: portrait) and (max-width: 390px),
+(any-pointer: coarse) and (orientation: portrait) and (max-width: 390px),
+(hover: none) and (orientation: portrait) and (max-width: 390px) {
+
+    .brandText {
+        display: none;
     }
 
     .objectiveCard {
-        top: 80px;
+        width: min(186px, 52vw);
+    }
+
+    .objectiveCard h2 {
+        font-size: 15px;
+    }
+
+    .minimapCard {
+        width: min(107px, 28vw);
+    }
+
+    .statusCard {
+        width: 182px;
+    }
+
+    .touchJoystick {
+        width: 101px;
+        height: 101px;
+    }
+
+    .mobileButtons {
+        width: 134px;
+        gap: 5px;
+    }
+
+    .mobileBtn {
+        min-height: 36px;
+    }
+
+    .touchCamera {
+        width: 54px;
+        height: 54px;
+    }
+}
+
+/* Short landscape phones */
+
+@media (pointer: coarse) and (orientation: landscape) and (max-height: 410px),
+(any-pointer: coarse) and (orientation: landscape) and (max-height: 410px),
+(hover: none) and (orientation: landscape) and (max-height: 410px) {
+
+    .brandText p,
+    .weatherCard {
+        display: none;
+    }
+
+    .objectiveCard {
+        top: calc(60px + var(--safe-t));
+    }
+
+    .objectiveCard h2 {
+        font-size: 14px;
+    }
+
+    .objectiveFooter {
+        display: none;
+    }
+
+    .minimapCard {
+        top: calc(60px + var(--safe-t));
+        width: 95px;
+    }
+
+    .minimapLegend {
+        display: none;
+    }
+
+    .statusCard {
+        bottom: calc(103px + var(--safe-b));
+        width: 171px;
+    }
+
+    .statusSub {
+        display: none;
+    }
+
+    .touchJoystick {
+        width: 83px;
+        height: 83px;
+    }
+
+    .touchCamera {
+        right: calc(145px + var(--safe-r));
+        bottom: calc(18px + var(--safe-b));
+        width: 45px;
+        height: 45px;
+    }
+
+    .mobileButtons {
+        width: 126px;
+    }
+
+    .mobileBtn {
+        min-height: 28px;
+    }
+}
+
+/* Accessibility */
+
+@media (prefers-reduced-motion: reduce) {
+
+    .toast,
+    .progressFill {
+        transition: none;
     }
 }
