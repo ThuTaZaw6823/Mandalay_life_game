@@ -7,6 +7,7 @@ import { formatClock } from './gameclock.js'
 import { WeatherSystem, nextWeather } from './weather.js'
 import { Character } from './character.js'
 import { Vehicles } from './vehicles.js'
+import { TouchControls } from './touchcontrols.js'
 import {
   forward,
   turnYaw,
@@ -20,18 +21,30 @@ import './style.css'
 
 const $ = id => document.getElementById(id)
 const canvas = $('viewport')
+const touch = new TouchControls()
+const isMobile = window.matchMedia('(pointer: coarse)').matches
+
 let renderer
+
 try {
   renderer = new THREE.WebGLRenderer({
     canvas,
-    antialias: true,
+    antialias: !isMobile,
     powerPreference: 'high-performance'
   })
-} catch (e) {
-  $('fatal').classList.remove('hidden')
-  throw e
+} catch (error) {
+  const fatal = document.createElement('div')
+  fatal.style.cssText =
+    'position:fixed;inset:0;z-index:100;background:#102a38;color:white;display:grid;place-items:center;padding:24px;text-align:center'
+  fatal.textContent =
+    'Unable to start 3D. Please enable WebGL or update your browser and graphics drivers.'
+  document.body.appendChild(fatal)
+  throw error
 }
-renderer.setPixelRatio(Math.min(devicePixelRatio, 2))
+
+renderer.setPixelRatio(
+  Math.min(window.devicePixelRatio || 1, isMobile ? 1.4 : 2)
+)
 renderer.setSize(innerWidth, innerHeight)
 renderer.outputColorSpace = THREE.SRGBColorSpace
 renderer.toneMapping = THREE.ACESFilmicToneMapping
@@ -43,13 +56,13 @@ const scene = new THREE.Scene()
 scene.background = new THREE.Color(0xb4dce9)
 scene.fog = new THREE.FogExp2(0xb4dce9, 0.0014)
 
-const hemi = new THREE.HemisphereLight(0xe6f6ff, 0x81956c, 2.0)
+const hemi = new THREE.HemisphereLight(0xe6f6ff, 0x81956c, 2)
 scene.add(hemi)
 
 const sun = new THREE.DirectionalLight(0xffe5b2, 2.35)
 sun.position.set(-70, 125, 65)
 sun.castShadow = true
-sun.shadow.mapSize.set(2048, 2048)
+sun.shadow.mapSize.set(isMobile ? 1024 : 2048, isMobile ? 1024 : 2048)
 sun.shadow.camera.left = -185
 sun.shadow.camera.right = 185
 sun.shadow.camera.top = 185
@@ -75,31 +88,44 @@ const fleet = new Vehicles(scene)
 const dayNight = new TimeCycle(scene, renderer, sun, hemi)
 const weather = new WeatherSystem(scene)
 
-const SAVE = 'mandalay-life-v4-alpha'
-let saved = {}
-try {
-  saved = JSON.parse(localStorage.getItem(SAVE) || '{}') || {}
-} catch {}
-const data = {
-  coins: 160,
-  jobs: 0,
-  ownPlot: false,
-  house: false,
-  trees: 0,
-  ...saved
-}
-const save = () => {
+const LEGACY_SAVE = 'mandalay-life-v4-alpha'
+const V7_SAVE = 'mandalay-life-v7-progress'
+
+function readSave (key) {
   try {
-    localStorage.setItem(SAVE, JSON.stringify(data))
+    return JSON.parse(localStorage.getItem(key) || '{}') || {}
+  } catch {
+    return {}
+  }
+}
+
+const legacy = readSave(LEGACY_SAVE)
+const previous = readSave(V7_SAVE)
+
+const data = {
+  coins: Number.isFinite(legacy.coins) ? legacy.coins : 160,
+  jobs: Number.isFinite(legacy.jobs) ? legacy.jobs : 0,
+  ownPlot: !!legacy.ownPlot,
+  house: !!legacy.house,
+  trees: clamp(Number(legacy.trees) || 0, 0, 12)
+}
+
+function saveWallet () {
+  try {
+    localStorage.setItem(LEGACY_SAVE, JSON.stringify(data))
   } catch {}
 }
+
 world.updatePlot(data)
 
+const spawn = previous.player || {}
+const validCoord = v => Number.isFinite(v) && Math.abs(v) < MAP_HALF - 25
+
 const player = {
-  x: 0,
+  x: validCoord(spawn.x) ? spawn.x : 0,
   y: 0,
-  z: 16,
-  yaw: 0,
+  z: validCoord(spawn.z) ? spawn.z : 16,
+  yaw: Number.isFinite(spawn.yaw) ? spawn.yaw : 0,
   vy: 0,
   grounded: true,
   ride: null,
@@ -107,23 +133,79 @@ const player = {
   fromDoor: null,
   roofPad: null
 }
-let orbit = 0,
-  zoom = 12,
-  playing = false,
-  paused = true,
-  clock = 0,
-  earnDistance = 0,
-  mission = null,
-  missionId = 0,
-  lastTime = performance.now(),
-  toastTime = 0,
-  mouseDown = false,
-  lastX = 0
+
+let orbit = 0
+let zoom = isMobile ? 15 : 12
+let verticalAngle = 0
+let playing = false
+let paused = true
+let clock = 0
+let earnDistance = 0
+let mission = null
+let missionId = Number.isInteger(previous.missionId) ? previous.missionId : 0
+let lastTime = performance.now()
+let toastTime = 0
+let mouseDown = false
+let lastX = 0
+let lastY = 0
+let frames = 0
+let autosaveTimer = 0
+let previousTouchJump = false
+
 const pressed = new Set()
 
-function notice (msg) {
-  $('toast').textContent = msg
-  $('toast').classList.add('show')
+if (Number.isInteger(previous.avatar) && previous.avatar >= 0) {
+  character.loadAvatar(previous.avatar)
+}
+
+if (typeof previous.weather === 'string') {
+  weather.setMode(previous.weather)
+}
+
+if (previous.mission && Number.isInteger(previous.mission.destinationIndex)) {
+  const destination = world.destinations[previous.mission.destinationIndex]
+
+  if (destination) {
+    mission = {
+      destination,
+      reward: previous.mission.reward || 90
+    }
+  }
+}
+
+function saveProgress () {
+  saveWallet()
+
+  const destinationIndex = mission
+    ? world.destinations.indexOf(mission.destination)
+    : -1
+
+  const progress = {
+    player: {
+      x: player.x,
+      z: player.z,
+      yaw: player.yaw
+    },
+    avatar: character.avatarIndex,
+    weather: weather.mode,
+    missionId,
+    mission:
+      destinationIndex >= 0
+        ? { destinationIndex, reward: mission.reward }
+        : null
+  }
+
+  try {
+    localStorage.setItem(V7_SAVE, JSON.stringify(progress))
+  } catch {}
+}
+
+function notice (message) {
+  const node = $('toast')
+  if (!node) return
+
+  node.textContent = message
+  node.classList.add('show')
   toastTime = 3.3
 }
 
@@ -132,17 +214,17 @@ function afford (amount) {
     notice(`Need ${amount - data.coins} more coins.`)
     return false
   }
+
   data.coins -= amount
-  save()
+  saveWallet()
   return true
 }
 
-function nearPlot () {
-  return !player.inside && distance2(player, world.plot) < 22
-}
-function nearPoint (p, r = 8) {
-  return !player.inside && distance2(player, p) < r
-}
+const nearPlot = () =>
+  !player.inside && !player.roofPad && distance2(player, world.plot) < 22
+
+const nearPoint = (p, r = 8) =>
+  !player.inside && !player.roofPad && distance2(player, p) < r
 
 function interact () {
   if (player.inside) {
@@ -152,42 +234,42 @@ function interact () {
         player.y = world.insideBaseY
         player.vy = 0
         player.grounded = true
+
         notice(
-          `Climbed to floor ${world.interiorFloor + 1}/${
+          `Floor ${world.interiorFloor + 1}/${
             world.maxInteriorFloors
-          }. Press Q to descend.`
+          }. Q to descend.`
         )
       } else {
         notice('Top floor. Press Q near the stairs to go down.')
       }
       return
     }
-    const d = world.getNearDoor(player, true)
-    if (d) {
+
+    if (world.getNearDoor(player, true)) {
       player.inside = false
       world.switchInterior(false)
       fleet.setVisible(true)
-      player.x = player.fromDoor.x
-      player.z = player.fromDoor.z + 1.1
+
+      player.x = player.fromDoor?.x ?? 0
+      player.z = (player.fromDoor?.z ?? 0) + 1.1
       player.y = 0
       player.vy = 0
       player.grounded = true
+
       camera.position.set(player.x, 6, player.z + 9)
       notice('Back outside.')
-    } else if (world.interiorFloor > 0) {
-      notice('Take the stairs down to Floor 1 (Q) before exiting.')
     } else {
-      notice(
-        world.maxInteriorFloors > 1
-          ? 'Walk to the front entrance to exit, or the staircase to climb.'
-          : 'Walk to the front entrance (E) to exit.'
-      )
+      notice('Use the entrance to exit, or E / Q near the stairs.')
     }
+
+    saveProgress()
     return
   }
 
   if (player.ride) {
     const v = player.ride
+
     if (
       (v.kind === 'plane' || v.kind === 'helicopter') &&
       v.alt > 1 &&
@@ -196,13 +278,16 @@ function interact () {
       notice('Land your aircraft first!')
       return
     }
+
     if (v.kind === 'boat' && v.x < RIVER.maxX - 13) {
-      notice('Return close to the eastern riverbank to disembark.')
+      notice('Return near the eastern riverbank to disembark.')
       return
     }
+
     player.ride = null
     character.setVisible(true)
     character.resetRiding()
+
     if (v.kind === 'helicopter' && v.onPad && v.onPad.y > 3) {
       player.roofPad = v.onPad
       player.x = v.onPad.x + 5.1
@@ -210,165 +295,252 @@ function interact () {
       player.y = v.onPad.y
       player.vy = 0
       player.grounded = true
-      notice(
-        'Landed on rooftop helipad. E re-board · R rooftop stairwell exit.'
-      )
-      return
-    }
-    if (v.kind === 'boat') {
+
+      notice('Rooftop helipad. E to board, R to return to street.')
+    } else if (v.kind === 'boat') {
       player.x = RIVER.maxX + 8
       player.z = v.z
       player.y = 0
-      notice(`Disembarked ${v.name} on the riverbank.`)
+      notice(`Disembarked ${v.name}.`)
+    } else {
+      const f = forward(v.yaw)
+
+      const exits = [
+        [v.x + f.z * 5, v.z - f.x * 5],
+        [v.x - f.z * 5, v.z + f.x * 5],
+        [v.x - f.x * 5, v.z - f.z * 5]
+      ]
+
+      const pos = exits.find(
+        ([x, z]) =>
+          !world.waterBlocked(x, z) &&
+          !world
+            .getCollisionBoxes()
+            .some(
+              b =>
+                x >= b.minX - 0.8 &&
+                x <= b.maxX + 0.8 &&
+                z >= b.minZ - 0.8 &&
+                z <= b.maxZ + 0.8
+            )
+      )
+
+      player.x = pos?.[0] ?? v.x
+      player.z = pos?.[1] ?? v.z + 6
+      player.y = 0
+
+      notice(`Exited ${v.name}`)
+    }
+
+    saveProgress()
+    return
+  }
+
+  if (!player.roofPad) {
+    const door = world.getNearDoor(player)
+
+    if (door) {
+      player.fromDoor = {
+        x: door.x,
+        z: door.z
+      }
+
+      player.inside = true
+      world.switchInterior(true, door)
+      fleet.setVisible(false)
+
+      player.x = 0
+      player.z = 4.7
+      player.y = 0
+      player.yaw = 0
+      orbit = 0
+
+      camera.position.set(0, 5.8, 9)
+      notice(`Entered ${door.name}.`)
       return
     }
-    const f = forward(v.yaw)
-    const exits = [
-      [v.x + f.z * 5, v.z - f.x * 5],
-      [v.x - f.z * 5, v.z + f.x * 5],
-      [v.x - f.x * 5, v.z - f.z * 5]
-    ]
-    const pos = exits.find(
-      ([x, z]) =>
-        !world.waterBlocked(x, z) &&
-        !world
-          .getCollisionBoxes()
-          .some(
-            b =>
-              x >= b.minX - 0.8 &&
-              x <= b.maxX + 0.8 &&
-              z >= b.minZ - 0.8 &&
-              z <= b.maxZ + 0.8
-          )
-    )
-    if (pos) {
-      player.x = pos[0]
-      player.z = pos[1]
-    } else {
-      player.x = v.x
-      player.z = v.z + 6
+  }
+
+  const vehicle = fleet.nearest(player, player.roofPad ? 9 : 6.5)
+
+  if (vehicle) {
+    if (player.roofPad) {
+      if (
+        vehicle.kind !== 'helicopter' ||
+        vehicle.onPad?.id !== player.roofPad.id
+      ) {
+        notice('Only the helicopter on this rooftop can be boarded.')
+        return
+      }
+    } else if (
+      (vehicle.kind === 'plane' || vehicle.kind === 'helicopter') &&
+      vehicle.alt > 1.3
+    ) {
+      notice('Wait for the aircraft to land before boarding.')
+      return
     }
-    notice(`Exited ${v.name}`)
-    return
-  }
 
-  const door = world.getNearDoor(player)
-  if (door && !player.roofPad) {
-    player.fromDoor = { x: door.x, z: door.z }
-    player.inside = true
-    world.switchInterior(true, door)
-    fleet.setVisible(false)
-    player.x = 0
-    player.z = 4.7
-    player.y = 0
-    player.yaw = 0
-    orbit = 0
-    camera.position.set(0, 5.8, 9)
-    const stairHint =
-      world.maxInteriorFloors > 1
-        ? ` ${world.maxInteriorFloors} floor(s) · stairs on the right.`
-        : ''
-    notice(`Entered ${door.name}.${stairHint}`)
-    return
-  }
-
-  const v = fleet.nearest(player, 6.5)
-  if (v) {
-    player.ride = v
+    player.ride = vehicle
     player.roofPad = null
-    player.x = v.x
-    player.z = v.z
-    player.yaw = v.yaw
-    character.setVisible(v.kind === 'bicycle' || v.kind === 'motorbike')
+    player.x = vehicle.x
+    player.z = vehicle.z
+    player.yaw = vehicle.yaw
+
+    character.setVisible(
+      vehicle.kind === 'bicycle' || vehicle.kind === 'motorbike'
+    )
+
     orbit = 0
+
     notice(
-      `${v.name}: W/S drive • A/D steer${
-        v.kind === 'plane' || v.kind === 'helicopter' ? ' • SPACE ascend' : ''
+      `${vehicle.name}: move/steer, E to exit${
+        vehicle.kind === 'plane' || vehicle.kind === 'helicopter'
+          ? ', Jump to climb'
+          : ''
       }`
     )
     return
   }
-  notice('Walk near a vehicle or an entrance, then press E.')
+
+  notice('Move near a vehicle or entrance, then press E / INTERACT.')
 }
 
 function delivery () {
-  if (player.inside) {
-    notice('Head outside to start a delivery.')
+  if (player.inside || player.roofPad) {
+    notice('Return to street level to do a delivery.')
     return
   }
+
   if (!mission) {
     if (!nearPoint(world.depot, 14)) {
-      notice('Find the DELIVERY DEPOT on the map first.')
+      notice('Find the Delivery Depot on the map first.')
       return
     }
+
+    const destination =
+      world.destinations[missionId++ % world.destinations.length]
+
     mission = {
-      destination: world.destinations[missionId++ % world.destinations.length],
+      destination,
       reward: 65 + (missionId % 3) * 25
     }
-    notice(`Parcel collected! Head to ${mission.destination.name}.`)
-    return
-  }
-  if (!nearPoint(mission.destination, 14)) {
+
+    notice(`Parcel collected! Deliver to ${destination.name}.`)
+  } else if (!nearPoint(mission.destination, 14)) {
     notice(`Go to ${mission.destination.name}.`)
     return
+  } else {
+    data.jobs += 1
+    data.coins += mission.reward
+
+    notice(`Delivery complete! +${mission.reward} coins`)
+
+    mission = null
   }
-  data.jobs++
-  data.coins += mission.reward
-  notice(`Delivery complete! +${mission.reward} coins`)
-  mission = null
-  save()
+
+  saveProgress()
 }
 
 function buy () {
   if (!nearPlot()) {
-    notice('Go to the highlighted property to buy land.')
-    return
+    return notice('Go to the highlighted property to buy land.')
   }
+
   if (data.ownPlot) {
-    notice('This land is already yours!')
-    return
+    return notice('This land is already yours!')
   }
+
   if (afford(world.plot.price)) {
     data.ownPlot = true
     world.updatePlot(data)
     notice('You own your first property!')
+    saveProgress()
   }
 }
 
 function build () {
   if (!nearPlot()) {
-    notice('Go to your property to build.')
-    return
+    return notice('Go to your property to build.')
   }
+
   if (!data.ownPlot) {
-    notice('Buy land first (B).')
-    return
+    return notice('Buy land first (B).')
   }
+
   if (data.house) {
-    notice('Your home is already built. Press E by its door.')
-    return
+    return notice('Your house is already built.')
   }
+
   if (afford(world.plot.housePrice)) {
     data.house = true
     world.updatePlot(data)
-    notice('A new home is ready! Enter through the front door.')
+    notice('House completed! Enter through its front door.')
+    saveProgress()
   }
 }
 
 function plant () {
   if (!nearPlot() || !data.ownPlot) {
-    notice('Own the land and stand nearby to plant.')
-    return
+    return notice('Buy land and stand nearby to plant.')
   }
+
   if (data.trees >= 12) {
-    notice('Your garden is full.')
-    return
+    return notice('Your garden is full.')
   }
+
   if (afford(world.plot.treePrice)) {
-    data.trees++
+    data.trees += 1
     world.updatePlot(data)
     notice('Tree planted!')
+    saveProgress()
   }
+}
+
+function changeAvatar () {
+  notice(`Character: ${character.changeOutfit()}`)
+  saveProgress()
+}
+
+function changeWeather () {
+  weather.setMode(nextWeather(weather.mode))
+  weather.unlockAudio()
+  notice(`Weather: ${weather.label}`)
+  saveProgress()
+}
+
+function stairsDown () {
+  if (!player.inside || !world.nearStairs(player)) {
+    return notice('Find indoor stairs first.')
+  }
+
+  if (world.interiorFloor === 0) {
+    return notice('Already on the ground floor.')
+  }
+
+  world.setInteriorFloor(world.interiorFloor - 1)
+  player.y = world.insideBaseY
+  player.vy = 0
+  player.grounded = true
+
+  notice(`Floor ${world.interiorFloor + 1}/${world.maxInteriorFloors}.`)
+}
+
+function exitRoof () {
+  if (!player.roofPad || player.ride) {
+    return notice('You must be on a rooftop helipad.')
+  }
+
+  const pad = player.roofPad
+  player.roofPad = null
+
+  player.x = pad.x
+  player.z = pad.z + 14.5
+  player.y = 0
+  player.vy = 0
+  player.grounded = true
+
+  notice('Returned to street level.')
+  saveProgress()
 }
 
 const action = {
@@ -377,82 +549,100 @@ const action = {
   KeyB: buy,
   KeyH: build,
   KeyT: plant,
-  KeyC: () => {
-    notice(`Character: ${character.changeOutfit()} · 3D model`)
-  },
-  KeyQ: () => {
-    if (player.inside && world.nearStairs(player)) {
-      if (world.interiorFloor > 0) {
-        world.setInteriorFloor(world.interiorFloor - 1)
-        player.y = world.insideBaseY
-        player.vy = 0
-        player.grounded = true
-        notice(
-          `Descended to floor ${world.interiorFloor + 1}/${
-            world.maxInteriorFloors
-          }.`
-        )
-      } else notice('Already on the ground floor.')
-    }
-  },
-  KeyV: () => {
-    weather.setMode(nextWeather(weather.mode))
-    notice(`Weather: ${weather.label}`)
-    weather.unlockAudio()
-  },
-  KeyR: () => {
-    if (!player.roofPad || player.ride) return
-    const pad = player.roofPad
-    player.roofPad = null
-    player.x = pad.x
-    player.z = pad.z + 14.5
-    player.y = 0
-    player.vy = 0
-    player.grounded = true
-    notice('Rooftop stairwell: back on the street.')
+  KeyC: changeAvatar,
+  KeyV: changeWeather,
+  KeyQ: stairsDown,
+  KeyR: exitRoof
+}
+
+function jumpOnFoot () {
+  if (!player.ride && player.grounded) {
+    player.vy = 9.4
+    player.grounded = false
   }
 }
 
-window.addEventListener('keydown', e => {
+window.addEventListener('keydown', event => {
   if (
     ['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(
-      e.code
+      event.code
     )
-  )
-    e.preventDefault()
-  pressed.add(e.code)
-  if (!e.repeat && playing && !paused) {
-    if (action[e.code]) action[e.code]()
-    if (e.code === 'Space' && !player.ride && player.grounded) {
-      player.vy = 9.4
-      player.grounded = false
-    }
+  ) {
+    event.preventDefault()
   }
-  if (e.code === 'Escape' && playing) {
+
+  pressed.add(event.code)
+
+  if (event.code === 'Escape' && playing && !event.repeat) {
     paused = !paused
-    $('helpOverlay').classList.toggle('hidden', !paused)
+
+    $('helpOverlay')?.classList.toggle('hidden', !paused)
+
+    pressed.clear()
+    return
+  }
+
+  if (!event.repeat && playing && !paused) {
+    action[event.code]?.()
+
+    if (event.code === 'Space') {
+      jumpOnFoot()
+    }
   }
 })
 
-window.addEventListener('keyup', e => pressed.delete(e.code))
-window.addEventListener('blur', () => pressed.clear())
-canvas.addEventListener('pointerdown', e => {
+window.addEventListener('keyup', event => pressed.delete(event.code))
+
+window.addEventListener('blur', () => {
+  pressed.clear()
+  if (playing) saveProgress()
+})
+
+window.addEventListener('pagehide', saveProgress)
+
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    pressed.clear()
+    if (playing) saveProgress()
+  }
+})
+
+canvas.addEventListener('pointerdown', event => {
   mouseDown = true
-  lastX = e.clientX
-  canvas.setPointerCapture(e.pointerId)
+  lastX = event.clientX
+  lastY = event.clientY
+  canvas.setPointerCapture(event.pointerId)
 })
-canvas.addEventListener('pointerup', () => (mouseDown = false))
-canvas.addEventListener('pointercancel', () => (mouseDown = false))
-canvas.addEventListener('pointermove', e => {
+
+canvas.addEventListener('pointerup', () => {
+  mouseDown = false
+})
+
+canvas.addEventListener('pointercancel', () => {
+  mouseDown = false
+})
+
+canvas.addEventListener('pointermove', event => {
   if (!mouseDown) return
-  orbit = clamp(orbit + (e.clientX - lastX) * 0.006, -2.1, 2.1)
-  lastX = e.clientX
+
+  orbit = clamp(orbit + (event.clientX - lastX) * 0.006, -2.1, 2.1)
+
+  verticalAngle = clamp(
+    verticalAngle + (event.clientY - lastY) * 0.004,
+    -0.5,
+    0.8
+  )
+
+  lastX = event.clientX
+  lastY = event.clientY
 })
+
 canvas.addEventListener(
   'wheel',
-  e => {
-    e.preventDefault()
-    zoom = clamp(zoom + e.deltaY * 0.014, 6.5, 23)
+  event => {
+    event.preventDefault()
+
+    zoom = clamp(zoom + event.deltaY * 0.014, 6.5, 30)
   },
   { passive: false }
 )
@@ -460,121 +650,243 @@ canvas.addEventListener(
 function resume () {
   playing = true
   paused = false
-  $('startOverlay').classList.add('hidden')
-  $('helpOverlay').classList.add('hidden')
-}
-$('startButton').onclick = () => {
-  weather.unlockAudio()
-  resume()
-  notice('Welcome to Mandalay Life v5.1 · Royal City!')
-}
-$('helpButton').onclick = () => {
-  paused = true
-  $('helpOverlay').classList.remove('hidden')
-}
-$('closeHelp').onclick = $('resumeButton').onclick = resume
-$('weatherToggle').onclick = () => {
-  weather.setMode(nextWeather(weather.mode))
-  weather.unlockAudio()
-  notice('Weather: ' + weather.label)
+
+  $('startOverlay')?.classList.add('hidden')
+  $('helpOverlay')?.classList.add('hidden')
+
+  pressed.clear()
 }
 
+$('startButton')?.addEventListener('click', () => {
+  weather.unlockAudio()
+  resume()
+  notice('Welcome to Mandalay Life V7.0!')
+})
+
+$('resumeButton')?.addEventListener('click', resume)
+
+$('closeHelp')?.addEventListener('click', resume)
+
+$('helpButton')?.addEventListener('click', () => {
+  if (!playing) return
+
+  paused = true
+  pressed.clear()
+
+  $('helpOverlay')?.classList.remove('hidden')
+})
+
+$('weatherToggle')?.addEventListener('click', changeWeather)
+
+// Additional mobile actions
+function addMobileExtraActions () {
+  const buttons = document.querySelector('.mobileButtons')
+
+  if (!buttons) return
+
+  const more = document.createElement('button')
+  more.type = 'button'
+  more.className = 'mobileBtn'
+  more.textContent = 'MORE'
+  buttons.appendChild(more)
+
+  const panel = document.createElement('div')
+
+  panel.style.cssText =
+    'display:none;position:fixed;right:12px;bottom:calc(240px + env(safe-area-inset-bottom,0px));z-index:18;padding:10px;border-radius:16px;background:#142635ed;border:1px solid #ffffff33;grid-template-columns:repeat(2,70px);gap:8px;max-height:48vh;overflow:auto'
+
+  for (const [label, fn] of [
+    ['BUY', buy],
+    ['HOUSE', build],
+    ['TREE', plant],
+    ['DOWN', stairsDown],
+    ['ROOF', exitRoof]
+  ]) {
+    const button = document.createElement('button')
+
+    button.type = 'button'
+    button.className = 'mobileBtn'
+    button.textContent = label
+
+    button.addEventListener('click', () => {
+      if (playing && !paused) fn()
+      panel.style.display = 'none'
+    })
+
+    panel.appendChild(button)
+  }
+
+  document.body.appendChild(panel)
+
+  more.addEventListener('click', () => {
+    panel.style.display = panel.style.display === 'grid' ? 'none' : 'grid'
+  })
+}
+
+addMobileExtraActions()
+
 function input () {
+  const m = touch.getMoveState()
+
   return {
-    forward: pressed.has('KeyW') || pressed.has('ArrowUp'),
-    back: pressed.has('KeyS') || pressed.has('ArrowDown'),
-    left: pressed.has('KeyA') || pressed.has('ArrowLeft'),
-    right: pressed.has('KeyD') || pressed.has('ArrowRight'),
-    fast: pressed.has('ShiftLeft') || pressed.has('ShiftRight'),
-    jump: pressed.has('Space')
+    forward: pressed.has('KeyW') || pressed.has('ArrowUp') || m.forward,
+
+    back: pressed.has('KeyS') || pressed.has('ArrowDown') || m.back,
+
+    left: pressed.has('KeyA') || pressed.has('ArrowLeft') || m.left,
+
+    right: pressed.has('KeyD') || pressed.has('ArrowRight') || m.right,
+
+    fast: pressed.has('ShiftLeft') || pressed.has('ShiftRight') || m.fast,
+
+    jump: pressed.has('Space') || m.jump
   }
 }
 
+function processTouch () {
+  const delta = touch.consumeCameraDelta()
+
+  orbit = clamp(orbit + delta.x * 0.008, -2.1, 2.1)
+
+  verticalAngle = clamp(verticalAngle + delta.y * 0.005, -0.5, 0.8)
+
+  const clicks = touch.consumeClicks()
+
+  if (clicks.interact) interact()
+  if (clicks.delivery) delivery()
+  if (clicks.weather) changeWeather()
+  if (clicks.avatar) changeAvatar()
+
+  const jumping = touch.buttons.jump
+
+  if (jumping && !previousTouchJump) {
+    jumpOnFoot()
+  }
+
+  previousTouchJump = jumping
+}
+
 function simulate (dt) {
+  processTouch()
+
   const i = input()
   clock += dt
+
   dayNight.update(dt, player)
   weather.update(dt, player, dayNight)
   world.setWeather(weather.kind)
   cityLife.update(dt, dayNight.night, player.ride)
+
   world.liveCollisionBoxes = cityLife.getCollisionBoxes()
 
   if (player.ride) {
-    const d = fleet.update(player.ride, i, dt, world)
-    player.x = player.ride.x
-    player.z = player.ride.z
-    player.y =
-      player.ride.kind === 'plane' || player.ride.kind === 'helicopter'
-        ? player.ride.alt
-        : 0
-    player.yaw = player.ride.yaw
-    if (player.ride.kind === 'bicycle' || player.ride.kind === 'motorbike') {
-      const f = forward(player.ride.yaw)
+    const v = player.ride
+    const beforeX = v.x
+    const beforeZ = v.z
+
+    fleet.update(v, i, dt, world)
+
+    player.x = v.x
+    player.z = v.z
+
+    player.y = v.kind === 'plane' || v.kind === 'helicopter' ? v.alt : 0
+
+    player.yaw = v.yaw
+
+    if (v.kind === 'bicycle' || v.kind === 'motorbike') {
+      const f = forward(v.yaw)
+
+      const rearOffset = v.kind === 'motorbike' ? -0.55 : -0.36
+
+      const seatOffsetY = v.kind === 'motorbike' ? 0.02 : 0.61
+
       character.setVisible(true)
+
       character.setPosition(
-        player.x + f.x * 0.2,
-        player.ride.kind === 'bicycle' ? 0.6 : 0.72,
-        player.z + f.z * 0.2,
+        player.x + f.x * rearOffset,
+        seatOffsetY,
+        player.z + f.z * rearOffset,
         player.yaw
       )
-      character.animateRiding(
-        dt,
-        player.ride.kind,
-        Math.abs(player.ride.velocity)
-      )
+
+      character.animateRiding(dt, v.kind, Math.abs(v.velocity))
     }
-    if (d > 0) {
-      earnDistance += d
-      if (earnDistance >= 110) {
-        earnDistance -= 110
-        data.coins += 6
-        save()
-        notice('+6 coins for exploring!')
-      }
+
+    const actualDistance = Math.hypot(v.x - beforeX, v.z - beforeZ)
+
+    earnDistance += actualDistance
+
+    if (earnDistance >= 110) {
+      const rewardCount = Math.floor(earnDistance / 110)
+
+      earnDistance -= rewardCount * 110
+
+      data.coins += rewardCount * 6
+      saveWallet()
+
+      notice(`+${rewardCount * 6} coins for exploring!`)
     }
   } else {
     const speed = i.fast ? 14.1 : 7.9
-    const h = (i.right ? 1 : 0) - (i.left ? 1 : 0)
-    player.yaw = turnYaw(player.yaw, h, 2.65, dt)
+
+    const turn = Number(i.right) - Number(i.left)
+
+    player.yaw = turnYaw(player.yaw, turn, 2.65, dt)
+
     const f = forward(player.yaw)
-    const move = (i.forward ? 1 : 0) - (i.back ? 1 : 0),
-      d = move * speed * dt
+
+    const move = Number(i.forward) - Number(i.back)
+
+    const d = move * speed * dt
+
     const bounds = player.inside
-      ? { minX: -7.0, maxX: 7.0, minZ: -5.9, maxZ: 5.9 }
+      ? {
+          minX: -7,
+          maxX: 7,
+          minZ: -5.9,
+          maxZ: 5.9
+        }
       : worldBounds
+
     const r = player.inside ? 0.45 : 0.65
 
     if (player.roofPad) {
-      const pad = player.roofPad,
-        nx = player.x + f.x * d,
-        nz = player.z + f.z * d
+      const pad = player.roofPad
+
+      const nx = player.x + f.x * d
+      const nz = player.z + f.z * d
+
       if (Math.abs(nx - pad.x) < 10.2 && Math.abs(nz - pad.z) < 11.2) {
         player.x = nx
         player.z = nz
       }
+
       integrateJump(player, dt, -25, pad.y)
     } else {
-      const nx = player.x + f.x * d,
-        nz = player.z + f.z * d
+      const nx = player.x + f.x * d
+      const nz = player.z + f.z * d
+
       const stairY = player.inside
         ? world.insideBaseY
         : world.groundHeightAt(nx, nz, player.y)
 
-      // Watchtower spiral staircase & top observation deck movement
       if (!player.inside && stairY > 0.3 && world.watchtower) {
         const wt = world.watchtower
-        const distFromCore = Math.hypot(nx - wt.x, nz - wt.z)
-        const onTopDeck =
-          player.y >= wt.topY - 1.5 && distFromCore <= wt.outerRadius + 0.1
-        const onSpiralRamp =
-          distFromCore >= wt.coreRadius - 0.1 &&
-          distFromCore <= wt.outerRadius + 0.2
-        if (onTopDeck || onSpiralRamp) {
+
+        const radius = Math.hypot(nx - wt.x, nz - wt.z)
+
+        const onDeck =
+          player.y >= wt.topY - 1.5 && radius <= wt.outerRadius + 0.1
+
+        const onRamp =
+          radius >= wt.coreRadius - 0.1 && radius <= wt.outerRadius + 0.2
+
+        if (onDeck || onRamp) {
           player.x = nx
           player.z = nz
         }
       } else {
-        const newPos = sweptMove(
+        const result = sweptMove(
           player,
           f.x * d,
           f.z * d,
@@ -582,17 +894,22 @@ function simulate (dt) {
           world.getCollisionBoxes(player.inside),
           bounds
         )
-        if (player.inside || !world.waterBlocked(newPos.x, newPos.z)) {
-          player.x = newPos.x
-          player.z = newPos.z
+
+        if (player.inside || !world.waterBlocked(result.x, result.z)) {
+          player.x = result.x
+          player.z = result.z
         }
       }
+
       const floorY = player.inside
         ? world.insideBaseY
         : world.groundHeightAt(player.x, player.z, player.y)
+
       integrateJump(player, dt, -25, floorY)
     }
+
     character.setPosition(player.x, player.y, player.z, player.yaw)
+
     character.animate(
       dt,
       Math.abs(move) * (i.fast ? 1 : 0.53),
@@ -600,146 +917,212 @@ function simulate (dt) {
       clock
     )
   }
+
   if (player.inside) {
     weather.rain.points.visible = false
     weather.snow.points.visible = false
   }
+
   world.setTimeOfDay(dayNight.hour, dayNight.night)
+
   fleet.setNightMode(dayNight.night, player.ride)
+
   world.update(clock, dt)
+
+  autosaveTimer += dt
+
+  if (autosaveTimer > 10) {
+    autosaveTimer = 0
+
+    if (!player.inside && !player.roofPad) {
+      saveProgress()
+    }
+  }
 }
 
 function renderCamera (dt) {
   const a = player.yaw + orbit
-  const focus = new THREE.Vector3(player.x, player.y + 1.85, player.z),
-    range = player.inside ? Math.min(zoom, 8) : zoom
+
+  const focus = new THREE.Vector3(player.x, player.y + 1.85, player.z)
+
+  const range = player.inside ? Math.min(zoom, 8) : zoom
+
+  const altitude = Math.max(2.5, range * (0.52 + verticalAngle))
+
   const desired = new THREE.Vector3(
     player.x - Math.sin(a) * range,
-    player.y + Math.max(3.2, range * 0.52),
+    player.y + altitude,
     player.z + Math.cos(a) * range
   )
+
   camera.position.lerp(desired, Math.min(1, dt * 8))
+
   camera.lookAt(focus)
 }
 
-const map = $('minimap'),
-  ctx = map.getContext('2d')
+const map = $('minimap')
+const ctx = map.getContext('2d')
+
 function drawMap () {
-  const w = map.width,
-    h = map.height,
-    extent = MAP_HALF
-  const X = x => ((x + extent) / (extent * 2)) * w,
-    Z = z => ((z + extent) / (extent * 2)) * h
+  const w = map.width
+  const h = map.height
+  const extent = MAP_HALF
+
+  const X = x => ((x + extent) / (2 * extent)) * w
+
+  const Z = z => ((z + extent) / (2 * extent)) * h
+
   ctx.fillStyle = '#9eb78b'
   ctx.fillRect(0, 0, w, h)
+
   ctx.fillStyle = '#5195af'
+
   ctx.fillRect(X(RIVER.minX), 0, X(RIVER.maxX) - X(RIVER.minX), h)
+
   ctx.strokeStyle = '#526670'
-  ctx.lineWidth = 3.0
+  ctx.lineWidth = 3
+
   for (const x of ROADS_X) {
     ctx.beginPath()
-    ctx.moveTo(X(x), Z(-MAP_HALF + 20))
-    ctx.lineTo(X(x), Z(MAP_HALF - 20))
+    ctx.moveTo(X(x), Z(-extent + 20))
+    ctx.lineTo(X(x), Z(extent - 20))
     ctx.stroke()
   }
+
   for (const z of ROADS_Z) {
     ctx.beginPath()
     ctx.moveTo(X(-832), Z(z))
-    ctx.lineTo(X(MAP_HALF - 20), Z(z))
+    ctx.lineTo(X(extent - 20), Z(z))
     ctx.stroke()
   }
-  const dx = PALACE.x - PALACE.outerHalf,
-    dz = PALACE.z - PALACE.outerHalf
+
+  const dx = PALACE.x - PALACE.outerHalf
+
+  const dz = PALACE.z - PALACE.outerHalf
+
   ctx.fillStyle = '#428ca9'
+
   ctx.fillRect(
     X(dx),
     Z(dz),
-    ((PALACE.outerHalf * 2) / (extent * 2)) * w,
-    ((PALACE.outerHalf * 2) / (extent * 2)) * h
+    (PALACE.outerHalf / extent) * w,
+    (PALACE.outerHalf / extent) * h
   )
+
   ctx.fillStyle = '#9fb58a'
+
   ctx.fillRect(
     X(PALACE.x - PALACE.innerHalf),
     Z(PALACE.z - PALACE.innerHalf),
-    ((PALACE.innerHalf * 2) / (extent * 2)) * w,
-    ((PALACE.innerHalf * 2) / (extent * 2)) * h
+    (PALACE.innerHalf / extent) * w,
+    (PALACE.innerHalf / extent) * h
   )
+
   ctx.strokeStyle = '#a05243'
   ctx.lineWidth = 1.7
+
   ctx.strokeRect(
     X(PALACE.x - PALACE.wallHalf),
     Z(PALACE.z - PALACE.wallHalf),
-    ((PALACE.wallHalf * 2) / (extent * 2)) * w,
-    ((PALACE.wallHalf * 2) / (extent * 2)) * h
+    (PALACE.wallHalf / extent) * w,
+    (PALACE.wallHalf / extent) * h
   )
+
   for (const bridge of BRIDGES) {
+    const len = bridge.axis === 'z' ? 14 : 42
+
+    const dep = bridge.axis === 'z' ? 42 : 14
+
     ctx.fillStyle = '#efe0b8'
-    const len = bridge.axis === 'z' ? 14 : 42,
-      dep = bridge.axis === 'z' ? 42 : 14
+
     ctx.fillRect(
       X(bridge.x - len / 2),
       Z(bridge.z - dep / 2),
-      (len / (extent * 2)) * w,
-      (dep / (extent * 2)) * h
+      (len / (2 * extent)) * w,
+      (dep / (2 * extent)) * h
     )
   }
+
   const airport = world.airport
   ctx.fillStyle = '#374951'
+
   ctx.fillRect(
     X(airport.x - airport.runwayWidth / 2),
     Z(airport.z - airport.runwayLength / 2),
-    (airport.runwayWidth / (extent * 2)) * w,
-    (airport.runwayLength / (extent * 2)) * h
+    (airport.runwayWidth / (2 * extent)) * w,
+    (airport.runwayLength / (2 * extent)) * h
   )
+
   ctx.fillStyle = data.ownPlot ? '#50bc91' : '#f7d875'
+
   ctx.fillRect(
     X(world.plot.x - 14),
     Z(world.plot.z - 15),
-    (28 / (extent * 2)) * w,
-    (30 / (extent * 2)) * h
+    (28 / (2 * extent)) * w,
+    (30 / (2 * extent)) * h
   )
+
   const dest = mission ? mission.destination : world.depot
+
   ctx.fillStyle = '#ffa955'
   ctx.save()
+
   ctx.translate(X(dest.x), Z(dest.z))
+
   ctx.rotate(Math.PI / 4)
   ctx.fillRect(-4, -4, 8, 8)
   ctx.restore()
+
   ctx.fillStyle = '#ffffff'
   ctx.beginPath()
+
   ctx.arc(X(player.x), Z(player.z), 4.3, 0, Math.PI * 2)
+
   ctx.fill()
+
   ctx.fillStyle = '#234b55'
   ctx.beginPath()
+
   ctx.arc(X(player.x), Z(player.z), 2.7, 0, Math.PI * 2)
+
   ctx.fill()
 }
 
 function hud () {
-  const d = mission ? mission.destination : world.depot,
-    distance = Math.round(distance2(player, d))
+  const destination = mission ? mission.destination : world.depot
+
+  const meters = Math.round(distance2(player, destination))
+
   $('coins').textContent = Math.floor(data.coins).toLocaleString()
+
   $('jobs').textContent = data.jobs
+
   $('objective').textContent = mission
-    ? `Deliver to ${d.name}`
+    ? `Deliver to ${destination.name}`
     : 'Pick up a delivery'
+
   $('objectiveDetail').textContent = player.inside
     ? 'Head outside to continue your mission'
-    : `${d.name} · ${distance}m away${
+    : `${destination.name} · ${meters}m away${
         mission ? ` · +${mission.reward} coins` : ''
       }`
-  $('meters').textContent = distance + 'm'
-  $('questProgress').style.width = clamp(100 - distance / 3, 6, 100) + '%'
+
+  $('meters').textContent = `${meters}m`
+
+  $('questProgress').style.width = `${clamp(100 - meters / 3, 6, 100)}%`
+
   $('stateLabel').textContent = player.inside
     ? 'INSIDE BUILDING'
     : player.ride
     ? player.ride.name.toUpperCase()
     : 'EXPLORING'
+
   $('stateDetail').textContent = player.inside
     ? world.getInteriorLabel()
     : player.ride
     ? 'DRIVE · EXPLORE · E TO EXIT'
     : `WALK · RUN · JUMP · ${character.avatarName.toUpperCase()}`
+
   $('location').textContent = player.inside
     ? world.getInteriorLabel()
     : player.x < RIVER.maxX + 30
@@ -751,70 +1134,93 @@ function hud () {
     : Math.abs(player.x) > 220 || Math.abs(player.z) > 220
     ? 'MANDALAY · OUTER DISTRICT'
     : 'MANDALAY · DOWNTOWN DISTRICT'
+
   $('gameTime').textContent = formatClock(dayNight.time)
+
   $('gamePhase').textContent = dayNight.phase
+
   $('weatherStatus').textContent = weather.label
 
-  let hint = 'Find a vehicle or a doorway · E to interact'
-  if (player.roofPad) hint = 'E — Re-board helicopter · R — Stairwell to street'
-  if (player.inside) {
-    if (world.maxInteriorFloors === 1) {
-      hint = 'Walk to the front entrance (E) to exit'
-    } else {
-      hint = world.nearStairs(player)
-        ? `E — Upstairs · Q — Downstairs · Floor ${world.interiorFloor + 1}/${
-            world.maxInteriorFloors
-          }`
-        : world.interiorFloor === 0
-        ? 'Find the entrance (E) or staircase (E)'
-        : 'Find the staircase (Q down / E up)'
-    }
+  let hint = 'Find a vehicle or doorway · E / INTERACT'
+
+  if (player.roofPad) {
+    hint = 'E re-board helicopter · R return to street'
+  } else if (player.inside) {
+    hint = world.nearStairs(player)
+      ? `E up · Q down · Floor ${world.interiorFloor + 1}/${
+          world.maxInteriorFloors
+        }`
+      : 'Find the door to exit / stairs to change floors'
   } else if (player.ride) {
-    hint = 'E to exit vehicle'
-  } else if (!player.roofPad && world.getNearDoor(player)) {
-    hint = 'E — Enter ' + world.getNearDoor(player).name
+    hint = 'E / INTERACT to exit vehicle'
+  } else if (world.getNearDoor(player)) {
+    hint = `E to enter ${world.getNearDoor(player).name}`
   } else if (fleet.nearest(player, 6.5)) {
-    hint = 'E — Drive ' + fleet.nearest(player, 6.5).name
+    hint = `E to ride ${fleet.nearest(player, 6.5).name}`
   }
 
-  if (!player.inside && !player.roofPad && nearPlot()) {
+  if (nearPlot()) {
     hint = data.ownPlot
       ? data.house
-        ? 'H = already built · T = plant tree'
-        : 'H — Build a home for 220 coins'
-      : 'B — Buy land for 120 coins'
+        ? 'T plant tree (house already built)'
+        : 'H build house for 220 coins'
+      : 'B buy land for 120 coins'
   }
-  if (!mission && nearPoint(world.depot, 14)) hint = 'F — Pick up parcel'
-  if (mission && nearPoint(mission.destination, 14))
-    hint = 'F — Complete delivery'
+
+  if (!mission && nearPoint(world.depot, 14)) {
+    hint = 'F / DELIVERY to pick up parcel'
+  }
+
+  if (mission && nearPoint(mission.destination, 14)) {
+    hint = 'F / DELIVERY to complete job'
+  }
+
   $('interaction').textContent = hint
   drawMap()
 }
 
-let frames = 0
 function frame (now) {
   requestAnimationFrame(frame)
+
   const dt = clamp((now - lastTime) / 1000 || 1 / 60, 0.001, 0.045)
+
   lastTime = now
-  if (playing && !paused) simulate(dt)
-  else clock += dt * 0.12
+
+  if (playing && !paused) {
+    simulate(dt)
+  } else {
+    clock += dt * 0.12
+  }
+
   renderCamera(dt)
   renderer.render(scene, camera)
-  if (++frames % 8 === 0) hud()
+
+  if (++frames % 8 === 0) {
+    hud()
+  }
+
   if (toastTime > 0) {
     toastTime -= dt
-    if (toastTime <= 0) $('toast').classList.remove('show')
+
+    if (toastTime <= 0) {
+      $('toast')?.classList.remove('show')
+    }
   }
 }
 
 window.addEventListener('resize', () => {
   camera.aspect = innerWidth / innerHeight
+
   camera.updateProjectionMatrix()
+
   renderer.setSize(innerWidth, innerHeight)
 })
 
 character.setPosition(player.x, 0, player.z, player.yaw)
+
 world.setTimeOfDay(dayNight.hour, dayNight.night)
+
 fleet.setNightMode(dayNight.night, null)
+
 hud()
 requestAnimationFrame(frame)

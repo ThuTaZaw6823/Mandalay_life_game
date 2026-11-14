@@ -3,103 +3,226 @@
 
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <meta name="theme-color" content="#19303a" />
-  <title>Mandalay Life | Stylized 3D · v5.0</title>
+  <meta name="viewport"
+    content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+  <title>Mandalay Life — Version 7.0 Royal City</title>
+  <meta name="description"
+    content="Mandalay Life v7.0 — upgraded 3D open world game with mobile controls, improved characters, wildlife, vehicles and city systems." />
 </head>
 
 <body>
-  <canvas id="viewport" aria-label="3D Mandalay Life city environment"></canvas>
-  <main id="hud" aria-label="Game HUD">
-    <header class="header">
-      <div class="logo">
-        <div class="logo-mark">M</div>
-        <div><strong>MANDALAY <span>LIFE</span></strong><small>THE NEW CHAPTER · V5.0 ROYAL CITY</small></div>
-      </div>
-      <div class="top-right">
-        <div class="stat clock-stat"><span>CITY TIME · 24H</span><b id="gameTime">07:30</b><small
-            id="gamePhase">MORNING</small></div><button id="weatherToggle" class="stat weather-stat"
-          title="Change weather (V)"><span>WEATHER · V TO CHANGE</span><b id="weatherStatus">SUNNY · AUTO</b></button>
-        <div class="stat"><span>YOUR WALLET</span><b><span class="coin-icon">✦</span> <span id="coins">160</span></b>
-        </div>
-        <div class="stat"><span>COMPLETED JOBS</span><b id="jobs">0</b></div>
-        <button id="helpButton" class="round" title="Controls and instructions">?</button>
+  <div id="app">
+    <canvas id="viewport" aria-label="Mandalay Life 3D viewport"></canvas>
+
+    <!-- Top Brand -->
+    <header class="brandPanel glass">
+      <div class="brandLogo">M</div>
+      <div class="brandText">
+        <h1>MANDALAY LIFE</h1>
+        <p>THE NEW CHAPTER · V7.0 ROYAL CITY</p>
       </div>
     </header>
-    <aside class="quest">
-      <div class="micro"><span class="pulsedot"></span> ACTIVE OBJECTIVE</div><strong id="objective">Pick up a
-        delivery</strong>
-      <p id="objectiveDetail">Head to the Delivery Depot</p>
-      <div class="quest-progress">
-        <div id="questProgress"></div>
+
+    <!-- Top Center Info -->
+    <section class="topCenter">
+      <div class="glass topCard locationCard">
+        <div class="topLabel">MANDALAY · LOCATION</div>
+        <div id="location" class="topValue">DOWNTOWN DISTRICT</div>
       </div>
-      <div class="quest-foot"><span>✦ COMPLETE JOBS TO EARN COINS</span><span id="meters">0m</span></div>
+
+      <div class="glass topCard timeCard">
+        <div class="topLabel">CITY TIME · 24H</div>
+        <div id="gameTime" class="timeValue">07:30</div>
+        <div id="gamePhase" class="timeSub">MORNING</div>
+      </div>
+
+      <div class="glass topCard weatherCard">
+        <div class="topLabel">WEATHER · V TO CHANGE</div>
+        <div id="weatherStatus" class="topValue">SUNNY · AUTO</div>
+      </div>
+
+      <div class="glass topCard walletCard">
+        <div class="topLabel">YOUR WALLET</div>
+        <div class="moneyValue">✦ <span id="coins">1000</span></div>
+      </div>
+
+      <div class="glass topCard jobsCard">
+        <div class="topLabel">COMPLETED JOBS</div>
+        <div class="jobsValue"><span id="jobs">0</span></div>
+      </div>
+
+      <button id="helpButton" class="glass helpFab" aria-label="Open help">
+        ?
+      </button>
+    </section>
+
+    <!-- Objective -->
+    <section class="objectiveCard glass">
+      <div class="objectiveHeader">
+        <span class="objectiveDot"></span>
+        <span>ACTIVE OBJECTIVE</span>
+      </div>
+      <h2 id="objective">Pick up a delivery</h2>
+      <p id="objectiveDetail">Delivery Depot · 120m away</p>
+
+      <div class="progressWrap">
+        <div id="questProgress" class="progressFill" style="width: 30%"></div>
+      </div>
+
+      <div class="objectiveFooter">
+        <span>✦ COMPLETE JOBS TO EARN COINS</span>
+        <span id="meters">120m</span>
+      </div>
+    </section>
+
+    <!-- Minimap -->
+    <aside class="minimapCard glass">
+      <div class="minimapTop">
+        <span>CITY NAVIGATION</span>
+        <span class="liveDot">● LIVE</span>
+      </div>
+      <canvas id="minimap" width="250" height="250"></canvas>
+      <div class="minimapLegend">
+        <span>● YOU</span>
+        <span>● MISSION</span>
+      </div>
     </aside>
-    <section class="map-panel">
-      <div class="map-head"><span>CITY NAVIGATION</span><span class="map-live">● LIVE</span></div><canvas id="minimap"
-        width="220" height="220" aria-label="Map displaying player and destinations"></canvas>
-      <div class="map-leg"><span><i class="key-you"></i> YOU</span><span><i class="key-mission"></i> MISSION</span>
+
+    <!-- Bottom Left Status -->
+    <section class="statusCard glass">
+      <div class="statusIcon">◎</div>
+      <div class="statusText">
+        <div id="stateLabel" class="statusMain">EXPLORING</div>
+        <div id="stateDetail" class="statusSub">
+          WALK · RUN · JUMP · CLASSIC COLLARED SHIRT
+        </div>
+      </div>
+      <div class="interactionMini" id="interaction">
+        Find a vehicle or a doorway · E to interact
       </div>
     </section>
-    <div class="loc-banner" id="location">MANDALAY · DOWNTOWN DISTRICT</div>
-    <section class="status-panel">
-      <div class="character-icon">◉</div>
-      <div>
-        <div class="status-title" id="stateLabel">EXPLORING</div>
-        <div class="status-sub" id="stateDetail">WALK · RUN · JUMP</div>
+
+    <!-- Keyboard Shortcut Bar -->
+    <div class="shortcutBar glass">
+      <span class="keyTip"><b>W A S D</b> MOVE</span>
+      <span class="keyTip"><b>SHIFT</b> RUN</span>
+      <span class="keyTip"><b>SPACE</b> JUMP / FLY</span>
+      <span class="keyTip"><b>E</b> INTERACT</span>
+      <span class="keyTip"><b>F</b> DELIVERY</span>
+      <span class="keyTip"><b>B</b> BUY LAND</span>
+      <span class="keyTip"><b>H</b> HOUSE</span>
+      <span class="keyTip"><b>T</b> TREE</span>
+      <span class="keyTip"><b>C</b> AVATAR</span>
+      <span class="keyTip"><b>V</b> WEATHER</span>
+      <span class="keyTip"><b>Q</b> STAIRS DOWN</span>
+      <span class="keyTip"><b>R</b> ROOFTOP EXIT</span>
+    </div>
+
+    <!-- Toast -->
+    <div id="toast" class="toast"></div>
+
+    <!-- Start Overlay -->
+    <div id="startOverlay" class="overlay">
+      <div class="overlayCard glass">
+        <h2>Mandalay Life V7.0</h2>
+        <p>
+          Upgraded 3D open world with better visuals, improved character
+          riding pose, upgraded wildlife, vehicles, day/night, weather and
+          mobile-friendly control support.
+        </p>
+
+        <div class="overlayActions">
+          <button id="startButton" class="primaryBtn">START GAME</button>
+          <button id="weatherToggle" class="secondaryBtn">
+            WEATHER MODE
+          </button>
+        </div>
+
+        <div class="overlayHints">
+          <p>Desktop: WASD · Shift · Space · E · F</p>
+          <p>Mobile: Use the joystick and touch buttons</p>
+        </div>
       </div>
-      <div class="sep"></div>
-      <div class="interaction" id="interaction">Explore the city or find a delivery</div>
-    </section>
-    <div class="controls-bar"><span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> MOVE</span><span><kbd>SHIFT</kbd>
-        RUN</span><span><kbd>SPACE</kbd> JUMP / FLY</span><span><kbd>E</kbd> INTERACT</span><span><kbd>F</kbd>
-        DELIVERY</span><span><kbd>B</kbd> BUY LAND</span><span><kbd>H</kbd> HOUSE</span><span><kbd>T</kbd>
-        TREE</span><span><kbd>C</kbd> AVATAR</span><span><kbd>V</kbd> WEATHER</span><span><kbd>E</kbd> STAIRS
-        UP</span><span><kbd>Q</kbd> STAIRS DOWN</span><span><kbd>R</kbd> ROOFTOP EXIT</span></div>
-    <div id="toast" class="toast" role="status" aria-live="polite"></div>
-    <div class="center-dot"></div>
-  </main>
-  <div class="overlay" id="startOverlay">
-    <div class="menu-card">
-      <div class="overline">✦ WELCOME TO YOUR NEXT ADVENTURE</div>
-      <h1>Make a living.<br><em>Make it yours.</em></h1>
-      <p>Explore the Royal Palace and its four moat bridges, visit Zay Cho Plaza, land a helicopter on five helipads,
-        and discover families, police patrols and a larger living city.</p>
-      <div class="tags"><span>✧ STYLIZED 3D</span><span>♧ LIVING CITY</span><span>◉ OPEN EXPLORATION</span></div><button
-        id="startButton" class="primary">EXPLORE MANDALAY <span>↗</span></button><a href="./showroom.html"
-        class="showroom-link">VIEW 3D MODEL SHOWROOM ↗</a><small>V5.0 ALPHA · PALACE · MARKET · HELIPADS · LIVING
-        CITY</small>
     </div>
-    <div class="menu-side"><span>01 / 03</span><strong>A CITY THAT<br>FEELS ALIVE.</strong>
-      <p>Explore palace museums, royal halls, gardens and clock-tower markets. Fly helicopters between rooftop pads and
-        discover a much larger city.</p>
+
+    <!-- Help Overlay -->
+    <div id="helpOverlay" class="overlay hidden">
+      <div class="overlayCard glass helpCard">
+        <h2>Controls & Help</h2>
+
+        <div class="helpGrid">
+          <div>
+            <h3>Movement</h3>
+            <ul>
+              <li>W / A / S / D — Walk or drive</li>
+              <li>Shift — Sprint / vehicle boost</li>
+              <li>Space — Jump / gain altitude</li>
+              <li>Mouse drag — Rotate camera</li>
+              <li>Wheel — Zoom camera</li>
+            </ul>
+          </div>
+
+          <div>
+            <h3>Actions</h3>
+            <ul>
+              <li>E — Enter / exit / interact</li>
+              <li>F — Pick up / complete delivery</li>
+              <li>C — Change avatar outfit</li>
+              <li>V — Change weather</li>
+              <li>B — Buy land</li>
+              <li>H — Build house</li>
+              <li>T — Plant tree</li>
+            </ul>
+          </div>
+
+          <div>
+            <h3>Interior / Roof</h3>
+            <ul>
+              <li>E — Go upstairs / confirm entry</li>
+              <li>Q — Go downstairs</li>
+              <li>R — Exit rooftop / stairwell shortcut</li>
+            </ul>
+          </div>
+
+          <div>
+            <h3>Mobile</h3>
+            <ul>
+              <li>Left joystick — Move</li>
+              <li>Camera pad — Orbit view</li>
+              <li>Action buttons — Jump / Interact / Sprint / Task</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="overlayActions">
+          <button id="resumeButton" class="primaryBtn">RESUME</button>
+          <button id="closeHelp" class="secondaryBtn">CLOSE</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Mobile Controls -->
+    <div id="mobileHud" class="mobileHud">
+      <div id="touchJoystick" class="touchJoystick">
+        <div class="joystickBase"></div>
+        <div id="joystickKnob" class="joystickKnob"></div>
+      </div>
+
+      <div id="touchCamera" class="touchCamera glass">
+        <span>CAM</span>
+      </div>
+
+      <div class="mobileButtons">
+        <button id="btnSprint" class="mobileBtn">RUN</button>
+        <button id="btnJump" class="mobileBtn mobileBtnPrimary">JUMP</button>
+        <button id="btnInteract" class="mobileBtn">E</button>
+        <button id="btnDelivery" class="mobileBtn">F</button>
+        <button id="btnWeather" class="mobileBtn">V</button>
+        <button id="btnAvatar" class="mobileBtn">C</button>
+      </div>
     </div>
   </div>
-  <div class="overlay hidden" id="helpOverlay">
-    <div class="help-card"><button id="closeHelp" class="close-help" aria-label="Close">×</button>
-      <div class="overline">FIELD GUIDE</div>
-      <h2>Explore your way.</h2>
-      <p>On foot: WASD moves, Shift runs, Space jumps. In vehicles: W/S drive, A/D turn. In plane: Space climbs and
-        Shift descends. Drag to orbit the camera, scroll to zoom. E opens nearby doors or enters/exits vehicles. Inside
-        a tall building, go to the staircase and press E to climb or Q to descend. V switches weather between Auto, Sun,
-        Rain, Storm and Snow. Helicopters land on rooftop pads; use E to get out and R to return to street level.</p>
-      <div class="help-grid">
-        <div><kbd>W A S D</kbd><span>Move / steer</span></div>
-        <div><kbd>SHIFT</kbd><span>Run / descend plane</span></div>
-        <div><kbd>SPACE</kbd><span>Jump / climb plane</span></div>
-        <div><kbd>E</kbd><span>Enter home / vehicle</span></div>
-        <div><kbd>F</kbd><span>Delivery mission</span></div>
-        <div><kbd>B H T</kbd><span>Buy, build, plant</span></div>
-        <div><kbd>C</kbd><span>Change 3D avatar model</span></div>
-        <div><kbd>V</kbd><span>Auto / Sun / Rain / Storm / Snow</span></div>
-        <div><kbd>E / Q</kbd><span>Stairs up / stairs down inside</span></div>
-        <div><kbd>R</kbd><span>Leave rooftop / return to street</span></div>
-        <div><kbd>ESC</kbd><span>Pause / resume</span></div>
-      </div><button id="resumeButton" class="primary">BACK TO THE CITY <span>↗</span></button>
-    </div>
-  </div>
-  <div class="fatal hidden" id="fatal">Unable to start 3D. Try updating Chrome, Firefox, or Safari and check your
-    graphics settings.</div>
+
   <script type="module" src="/src/main.js"></script>
 </body>
 

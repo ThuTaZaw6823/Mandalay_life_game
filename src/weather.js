@@ -1,89 +1,289 @@
-import * as THREE from 'three';
+import * as THREE from 'three'
+import {
+  WEATHER_MODES,
+  nextWeather,
+  scheduledWeather,
+  effectiveWeather,
+  weatherLabel
+} from './weatherstate.js'
 
-import {WEATHER_MODES,nextWeather,scheduledWeather,effectiveWeather,weatherLabel} from './weatherstate.js';
-export {WEATHER_MODES,nextWeather,scheduledWeather,effectiveWeather,weatherLabel};
+export {
+  WEATHER_MODES,
+  nextWeather,
+  scheduledWeather,
+  effectiveWeather,
+  weatherLabel
+}
 
-export class WeatherSystem{
-  constructor(scene){
-    this.scene=scene;this.mode='auto';this.kind='clear';this.elapsed=0;this.flash=0;this.thunderCooldown=0;
-    this.rainCount=1400;this.snowCount=950;
-    this.rainPositions=new Float32Array(this.rainCount*3);this.snowPositions=new Float32Array(this.snowCount*3);
-    this.rainSpeeds=new Float32Array(this.rainCount);this.snowSpeeds=new Float32Array(this.snowCount);
-    this.makeParticleCloud('rain',this.rainPositions,this.rainSpeeds,this.rainCount,0x9edafa,1.75);
-    this.makeParticleCloud('snow',this.snowPositions,this.snowSpeeds,this.snowCount,0xfff7ef,3.6);
-    this.lightningLight=new THREE.PointLight(0xd7edff,0,620,1.55);
-    scene.add(this.lightningLight);
-    this.cloudTint=.0;
+function particleTexture (kind) {
+  const canvas = document.createElement('canvas')
+  canvas.width = canvas.height = 64
+  const ctx = canvas.getContext('2d')
+
+  if (kind === 'snow') {
+    const gradient = ctx.createRadialGradient(32, 32, 3, 32, 32, 31)
+    gradient.addColorStop(0, 'rgba(255,255,255,1)')
+    gradient.addColorStop(0.28, 'rgba(255,255,255,0.88)')
+    gradient.addColorStop(0.65, 'rgba(255,255,255,0.35)')
+    gradient.addColorStop(1, 'rgba(255,255,255,0)')
+    ctx.fillStyle = gradient
+    ctx.fillRect(0, 0, 64, 64)
+  } else {
+    const gradient = ctx.createLinearGradient(0, 8, 0, 57)
+    gradient.addColorStop(0, 'rgba(220,242,255,0)')
+    gradient.addColorStop(0.25, 'rgba(220,242,255,0.45)')
+    gradient.addColorStop(0.75, 'rgba(220,242,255,0.8)')
+    gradient.addColorStop(1, 'rgba(220,242,255,0)')
+    ctx.strokeStyle = gradient
+    ctx.lineWidth = 4
+    ctx.lineCap = 'round'
+    ctx.beginPath()
+    ctx.moveTo(36, 8)
+    ctx.lineTo(28, 57)
+    ctx.stroke()
   }
-  makeParticleCloud(kind,positions,speeds,count,color,size){
-    const random=(n)=>{const v=Math.sin(n*81.7+11.3)*43758.5453;return v-Math.floor(v);};
-    for(let i=0;i<count;i++){
-      positions[3*i]=(random(i+37)-.5)*125;
-      positions[3*i+1]=random(i+738)*60;
-      positions[3*i+2]=(random(i+273)-.5)*125;
-      speeds[i]=(kind==='rain'?23:1.9)+random(i+921)*(kind==='rain'?17:2.5);
+
+  const texture = new THREE.CanvasTexture(canvas)
+  texture.colorSpace = THREE.SRGBColorSpace
+  return texture
+}
+
+export class WeatherSystem {
+  constructor (scene) {
+    this.scene = scene
+    this.mode = 'auto'
+    this.kind = 'clear'
+    this.elapsed = 0
+    this.flash = 0
+    this.thunderCooldown = 7
+    this.audio = null
+
+    const mobile = window.matchMedia?.('(pointer: coarse)')?.matches ?? false
+
+    this.rainCount = mobile ? 650 : 1300
+    this.snowCount = mobile ? 350 : 800
+
+    this.rainPositions = new Float32Array(this.rainCount * 3)
+    this.snowPositions = new Float32Array(this.snowCount * 3)
+    this.rainSpeeds = new Float32Array(this.rainCount)
+    this.snowSpeeds = new Float32Array(this.snowCount)
+
+    this.makeParticleCloud(
+      'rain',
+      this.rainPositions,
+      this.rainSpeeds,
+      this.rainCount
+    )
+
+    this.makeParticleCloud(
+      'snow',
+      this.snowPositions,
+      this.snowSpeeds,
+      this.snowCount
+    )
+
+    this.lightningLight = new THREE.PointLight(0xd7edff, 0, 500, 1.5)
+    this.scene.add(this.lightningLight)
+  }
+
+  makeParticleCloud (kind, positions, speeds, count) {
+    const rng = n => {
+      const v = Math.sin(n * 81.7 + 11.3) * 43758.5453
+      return v - Math.floor(v)
     }
-    const geometry=new THREE.BufferGeometry();geometry.setAttribute('position',new THREE.BufferAttribute(positions,3));
-    const material=new THREE.PointsMaterial({color,size,transparent:true,opacity:kind==='rain'?.66:.88,depthWrite:false,sizeAttenuation:kind==='snow'});
-    const points=new THREE.Points(geometry,material);points.frustumCulled=false;points.visible=false;
-    this.scene.add(points);this[kind]={points,positions,speeds,count};
+
+    for (let i = 0; i < count; i++) {
+      const j = i * 3
+
+      positions[j] = (rng(i + 37) - 0.5) * 110
+      positions[j + 1] = 4 + rng(i + 738) * 50
+      positions[j + 2] = (rng(i + 273) - 0.5) * 110
+
+      speeds[i] =
+        kind === 'rain' ? 24 + rng(i + 921) * 15 : 1.8 + rng(i + 921) * 2.5
+    }
+
+    const geometry = new THREE.BufferGeometry()
+    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3))
+
+    const material = new THREE.PointsMaterial({
+      color: 0xffffff,
+      map: particleTexture(kind),
+      size: kind === 'rain' ? 15 : 5,
+      sizeAttenuation: false,
+      transparent: true,
+      opacity: kind === 'rain' ? 0.72 : 0.82,
+      alphaTest: 0.025,
+      depthWrite: false,
+      fog: true
+    })
+
+    const points = new THREE.Points(geometry, material)
+    points.frustumCulled = false
+    points.visible = false
+
+    this.scene.add(points)
+    this[kind] = {
+      points,
+      positions,
+      speeds,
+      count
+    }
   }
-  setMode(mode){if(WEATHER_MODES.includes(mode))this.mode=mode;this.kind=effectiveWeather(this.mode,this.elapsed);return this.mode;}
-  get label(){return weatherLabel(this.kind)+(this.mode==='auto'?' · AUTO':'');}
-  thunder(){
-    // Short synthetic rumble; no external audio file needed, and autoplay failure is harmless.
-    try{
-      const AudioContext=window.AudioContext||window.webkitAudioContext;if(!AudioContext)return;
-      if(!this.audio)this.audio=new AudioContext();
-      if(this.audio.state==='suspended')return;
-      const duration=1.45,samples=Math.round(this.audio.sampleRate*duration),buffer=this.audio.createBuffer(1,samples,this.audio.sampleRate);
-      const data=buffer.getChannelData(0);let prev=0;
-      for(let i=0;i<samples;i++){prev=(prev*.98)+(Math.random()*2-1)*.02;data[i]=prev;}
-      const source=this.audio.createBufferSource();source.buffer=buffer;
-      const filter=this.audio.createBiquadFilter();filter.type='lowpass';filter.frequency.value=200;
-      const gain=this.audio.createGain();gain.gain.setValueAtTime(.0001,this.audio.currentTime);
-      gain.gain.exponentialRampToValueAtTime(.5,this.audio.currentTime+.08);
-      gain.gain.exponentialRampToValueAtTime(.001,this.audio.currentTime+duration);
-      source.connect(filter);filter.connect(gain);gain.connect(this.audio.destination);
-      source.start();source.stop(this.audio.currentTime+duration);
-    }catch{}
+
+  setMode (mode) {
+    if (WEATHER_MODES.includes(mode)) this.mode = mode
+    this.kind = effectiveWeather(this.mode, this.elapsed)
+    return this.mode
   }
-  unlockAudio(){try{const Context=window.AudioContext||window.webkitAudioContext;if(Context&&!this.audio)this.audio=new Context();if(this.audio?.state==='suspended')this.audio.resume();}catch{}}
-  update(dt,player,timecycle){
-    this.elapsed+=dt;const prev=this.kind;this.kind=effectiveWeather(this.mode,this.elapsed);
-    this.rain.points.visible=this.kind==='rain'||this.kind==='storm';
-    this.snow.points.visible=this.kind==='snow';
-    const anchorX=player.x,anchorY=player.y,anchorZ=player.z;
-    for(const key of ['rain','snow']){
-      const v=this[key];if(!v.points.visible)continue;
-      const p=v.positions;
-      for(let i=0;i<v.count;i++){
-        const ix=i*3;p[ix+1]-=v.speeds[i]*dt;
-        p[ix]+=dt*(key==='rain'?4.5:1.25);
-        if(p[ix+1]<-2){p[ix+1]+=57;p[ix]=(Math.random()-.5)*125;p[ix+2]=(Math.random()-.5)*125;}
-        if(p[ix]>63)p[ix]-=126;
+
+  get label () {
+    return weatherLabel(this.kind) + (this.mode === 'auto' ? ' · AUTO' : '')
+  }
+
+  unlockAudio () {
+    try {
+      const AudioContextClass = window.AudioContext || window.webkitAudioContext
+
+      if (!AudioContextClass) return
+      if (!this.audio) this.audio = new AudioContextClass()
+
+      if (this.audio.state === 'suspended') {
+        this.audio.resume().catch(() => {})
       }
-      v.points.position.set(anchorX,anchorY,anchorZ);
-      v.points.geometry.attributes.position.needsUpdate=true;
+    } catch {
+      // Audio is optional.
     }
-    this.flash=Math.max(0,this.flash-dt*5.2);
-    this.thunderCooldown-=dt;
-    if(this.kind==='storm'&&this.thunderCooldown<=0){
-      this.flash=1.0;this.thunderCooldown=7+Math.random()*8;this.thunder();
+  }
+
+  thunder () {
+    try {
+      if (!this.audio || this.audio.state !== 'running') return
+
+      const seconds = 1.2
+      const samples = Math.floor(this.audio.sampleRate * seconds)
+      const buffer = this.audio.createBuffer(1, samples, this.audio.sampleRate)
+      const output = buffer.getChannelData(0)
+
+      let low = 0
+      for (let i = 0; i < samples; i++) {
+        low = low * 0.98 + (Math.random() * 2 - 1) * 0.02
+        output[i] = low
+      }
+
+      const source = this.audio.createBufferSource()
+      const filter = this.audio.createBiquadFilter()
+      const gain = this.audio.createGain()
+
+      source.buffer = buffer
+      filter.type = 'lowpass'
+      filter.frequency.value = 190
+
+      const now = this.audio.currentTime
+      gain.gain.setValueAtTime(0.0001, now)
+      gain.gain.exponentialRampToValueAtTime(0.26, now + 0.1)
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + seconds)
+
+      source.connect(filter)
+      filter.connect(gain)
+      gain.connect(this.audio.destination)
+      source.start(now)
+      source.stop(now + seconds)
+    } catch {
+      // Sound errors never stop gameplay.
     }
-    this.lightningLight.intensity=this.flash*115;
-    this.lightningLight.position.set(anchorX+25,anchorY+90,anchorZ-18);
-    const overcast=this.kind==='storm'?.65:this.kind==='rain'?.4:this.kind==='snow'?.23:0;
-    if(timecycle){
-      const natural=1-timecycle.night;
-      timecycle.sun.intensity*=1-overcast*.62;
-      timecycle.hemi.intensity*=1-overcast*.28;
-      timecycle.scene.background.lerp(new THREE.Color(0x738996),overcast*.55);
-      timecycle.scene.fog.color.copy(timecycle.scene.background);
-      if(this.flash>.02){timecycle.scene.background.lerp(new THREE.Color(0xd5ebff),this.flash*.48);timecycle.scene.fog.color.copy(timecycle.scene.background);}
-      timecycle.stars.visible=timecycle.stars.visible&&overcast<.35;
-      timecycle.moon.visible=timecycle.moon.visible&&overcast<.35;
+  }
+
+  update (dt, player, timecycle) {
+    this.elapsed += dt
+
+    const previous = this.kind
+    this.kind = effectiveWeather(this.mode, this.elapsed)
+
+    this.rain.points.visible = this.kind === 'rain' || this.kind === 'storm'
+    this.snow.points.visible = this.kind === 'snow'
+
+    for (const key of ['rain', 'snow']) {
+      const effect = this[key]
+      if (!effect.points.visible) continue
+
+      const positions = effect.positions
+
+      for (let i = 0; i < effect.count; i++) {
+        const j = i * 3
+
+        positions[j + 1] -= effect.speeds[i] * dt
+        positions[j] += (key === 'rain' ? 5 : 1.1) * dt
+
+        if (positions[j + 1] < -3) {
+          positions[j + 1] = 50 + Math.random() * 7
+          positions[j] = (Math.random() - 0.5) * 110
+          positions[j + 2] = (Math.random() - 0.5) * 110
+        }
+
+        if (positions[j] > 55) {
+          positions[j] -= 110
+        }
+      }
+
+      effect.points.position.set(player.x, player.y, player.z)
+
+      effect.points.geometry.attributes.position.needsUpdate = true
     }
-    return prev!==this.kind;
+
+    this.flash = Math.max(0, this.flash - dt * 5)
+    this.thunderCooldown -= dt
+
+    if (this.kind === 'storm' && this.thunderCooldown <= 0) {
+      this.flash = 1
+      this.thunderCooldown = 7 + Math.random() * 8
+      this.thunder()
+    }
+
+    this.lightningLight.intensity = this.flash * 95
+    this.lightningLight.position.set(
+      player.x + 25,
+      player.y + 85,
+      player.z - 18
+    )
+
+    if (timecycle) {
+      const overcast =
+        this.kind === 'storm'
+          ? 0.75
+          : this.kind === 'rain'
+          ? 0.45
+          : this.kind === 'snow'
+          ? 0.25
+          : 0
+
+      timecycle.sun.intensity *= 1 - overcast * 0.35
+      timecycle.hemi.intensity *= 1 - overcast * 0.12
+
+      if (timecycle.moonLight) {
+        timecycle.moonLight.intensity *= 1 - overcast * 0.25
+      }
+
+      const night = timecycle.night > 0.5
+      const skyTint = new THREE.Color(night ? 0x30425a : 0x788d99)
+
+      timecycle.scene.background.lerp(skyTint, overcast * (night ? 0.2 : 0.42))
+      timecycle.scene.fog.color.copy(timecycle.scene.background)
+
+      if (this.flash > 0.02) {
+        timecycle.scene.background.lerp(
+          new THREE.Color(0xc2d8ef),
+          this.flash * 0.35
+        )
+        timecycle.scene.fog.color.copy(timecycle.scene.background)
+      }
+
+      if (overcast > 0.3) {
+        timecycle.stars.visible = false
+        timecycle.moon.visible = false
+      }
+    }
+
+    return previous !== this.kind
   }
 }
