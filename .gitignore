@@ -7,3 +7,9 @@ dist/
 *.dmg
 *.exe
 *.AppImage
+
+# Local upgrade files
+.aircraft-upgrade-backup/
+.mandalay-map-backup/
+/install-mandalay-map.mjs
+/mandalay-map.js
