@@ -17,6 +17,7 @@ import {
   clamp,
   worldBounds
 } from './physics.js'
+import { installMandalayMap } from './mandalay-map.js'
 import './style.css'
 
 const $ = id => document.getElementById(id)
@@ -153,6 +154,27 @@ let autosaveTimer = 0
 let previousTouchJump = false
 
 const pressed = new Set()
+
+// Creative Mandalay city atlas: full map, waypoints, landmarks and mobile MAP button.
+let mapWasPaused = true
+const royalCityMap = installMandalayMap({
+  scene,
+  world,
+  player,
+  getMission: () => mission,
+  isReady: () => playing && !paused &&
+    document.getElementById('helpOverlay')?.classList.contains('hidden'),
+  onPauseChange: opened => {
+    if (opened) {
+      mapWasPaused = paused
+      paused = true
+      pressed.clear()
+    } else {
+      paused = mapWasPaused
+    }
+  }
+})
+
 
 if (Number.isInteger(previous.avatar) && previous.avatar >= 0) {
   character.loadAvatar(previous.avatar)

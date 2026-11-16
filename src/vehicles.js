@@ -10,6 +10,7 @@ import {
 } from './physics.js'
 import { MOORINGS, makeRiverBoat } from './riverboats.js'
 import { RIVER, MAP_HALF } from './world.js'
+import { createTrainerAircraft, createChinookAircraft, createMAIAirbus } from './aircraft-models.js'
 
 function stick (parent, a, b, radius, color) {
   const va = new THREE.Vector3(...a),
@@ -1075,7 +1076,7 @@ export class Vehicles {
       })),
       {
         kind: 'plane',
-        name: 'Trainer Plane',
+        name: 'Orange-Gray Propeller Trainer',
         icon: '✈',
         x: 402,
         z: -322,
@@ -1100,7 +1101,7 @@ export class Vehicles {
       },
       {
         kind: 'plane',
-        name: 'Airbus A320neo Airliner',
+        name: 'MAI Airbus A320 Airliner',
         icon: '✈',
         variant: 'jet',
         x: 364,
@@ -1126,7 +1127,7 @@ export class Vehicles {
       },
       {
         kind: 'helicopter',
-        name: 'Airbus H160 Helicopter',
+        name: 'CH-47 Chinook Transport Helicopter',
         icon: '🚁',
         x: 368,
         z: -42,
@@ -1169,17 +1170,20 @@ export class Vehicles {
       } else if (v.kind === 'boat') {
         makeRiverBoat(v.modelHolder, v.variant)
       } else if (v.kind === 'plane' && !v.variant) {
-        const res = planeVisual(v.modelHolder)
+        const res = createTrainerAircraft(v.modelHolder)
         v.prop = res.prop
         v.wheelSpinners = res.spinners
       } else if (v.kind === 'plane' && v.variant) {
-        const res = planeVariant(v.modelHolder, v.variant)
+        const res = v.variant === 'jet'
+          ? createMAIAirbus(v.modelHolder)
+          : planeVariant(v.modelHolder, v.variant)
         v.extraPropellers = res.propellers
         v.wheelSpinners = res.spinners
       } else if (v.kind === 'helicopter') {
-        const res = helicopterVisual(v.modelHolder)
+        const res = createChinookAircraft(v.modelHolder)
         v.rotor = res.rotor
-        v.tailRotor = res.tail
+        v.tailRotor = res.tail ?? null
+        v.secondaryRotor = res.secondaryRotor ?? null
         v.wheelSpinners = res.spinners
       }
       this.addHeadlights(v)
@@ -1431,6 +1435,7 @@ export class Vehicles {
         Math.min(1, dt * 3)
       )
       v.rotor.rotation.y += dt * v.rotorSpeed
+      if (v.secondaryRotor) v.secondaryRotor.rotation.y -= dt * v.rotorSpeed
     }
     if (v.tailRotor) v.tailRotor.rotation.x += dt * (v.rotorSpeed * 1.35)
 
