@@ -1,4 +1,5 @@
 import * as THREE from 'three'
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import {nearestDriveableRoad,validRoadRoutes} from './road-graph.js'
 
 const colors=['#9c4f36','#537e8d','#e5d4b2','#3b5f4c','#7e6d83','#bb9d67']
@@ -67,6 +68,56 @@ export class VehicleSystem {
       const actor={root:vehicle,path:route.path,index,t:(i%8)/9,speed:7+(i%5)*2,reverse:!!(i%2)}
       this.traffic.push(actor)
       scene.add(vehicle)
+    }
+  }
+
+  /**
+   * Phase 2A: reuse the original game's car.glb inside the OSM driving world.
+   * This changes VISUALS only; OSM routes, collision and speed remain unchanged.
+   * If loading fails, the existing procedural cars stay fully playable.
+   */
+  async useOriginalCarModels(base=import.meta.env.BASE_URL) {
+    try {
+      const gltf=await new GLTFLoader().loadAsync(`${base}models/car.glb`)
+      const template=gltf.scene
+      template.updateMatrixWorld(true)
+      const bounds=new THREE.Box3().setFromObject(template)
+      const size=bounds.getSize(new THREE.Vector3())
+      if(bounds.isEmpty() || size.x<.1 || size.y<.1 || size.z<.1) {
+        throw new Error('Original car.glb contains no usable geometry')
+      }
+      // The original car asset faces -Z like the OSM driving controls.
+      const scale=Math.min(2.25/size.x,4.65/size.z)
+      const center=bounds.getCenter(new THREE.Vector3())
+      const makeVisual=(color,castShadow)=>{
+        const visual=template.clone(true)
+        visual.scale.setScalar(scale)
+        visual.position.set(-center.x*scale,-bounds.min.y*scale,-center.z*scale)
+        visual.traverse(obj=>{
+          if(!obj.isMesh)return
+          obj.castShadow=castShadow
+          obj.receiveShadow=true
+          // Shared geometry, but independent paint for traffic color variants.
+          if(/Car_SculptedBody/i.test(obj.name) && obj.material?.color){
+            obj.material=obj.material.clone()
+            obj.material.color.set(color)
+          }
+        })
+        return visual
+      }
+      const targets=[{root:this.car,color:'#b65d43',cast:true},...this.traffic.map((actor,i)=>({
+        root:actor.root,color:colors[i%colors.length],cast:false
+      }))]
+      const prepared=targets.map(v=>({root:v.root,visual:makeVisual(v.color,v.cast)}))
+      for(const {root,visual} of prepared){
+        // Preserve parent position, steering and existing vehicle radius.
+        for(const child of [...root.children])root.remove(child)
+        root.add(visual)
+      }
+      return {loaded:true,count:prepared.length}
+    }catch(error){
+      console.warn('Original car.glb unavailable; using OSM prototype cars:',error)
+      return {loaded:false,count:0,reason:error.message}
     }
   }
   toggleDrive(hero) {

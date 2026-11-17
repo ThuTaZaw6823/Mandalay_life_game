@@ -335,7 +335,12 @@ async function initialize() {
   drawPlayerOnMaps()
   updatePoiList()
   const glb=await loadBlenderAssets(scene,data,city,spawn)
-  $('model-status').textContent=glb.loaded?`${glb.loaded} .glb model(s) loaded · demo kiosk is fictional`:'No optional .glb assets loaded'
+  // Phase 2A: original v5 GLB car meshes now run on the OSM street graph.
+  const classicCar=await fleet.useOriginalCarModels()
+  const detail=classicCar.loaded
+    ? `${classicCar.count} original-game GLB cars loaded`
+    : 'Fallback procedural cars (original car.glb unavailable)'
+  $('model-status').textContent=`${glb.loaded} environment GLB asset(s) · ${detail}`
   if(glb.errors.length)console.warn('Optional GLB assets:',glb.errors)
   $('quality-readout').textContent=`Visual quality: ${quality} · dynamic facade detail`
 }
