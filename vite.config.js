@@ -10,7 +10,8 @@ export default defineConfig({
     rollupOptions: {
       input: {
         main: fileURLToPath(new URL('./index.html', import.meta.url)),
-        showroom: fileURLToPath(new URL('./showroom.html', import.meta.url))
+        showroom: fileURLToPath(new URL('./showroom.html', import.meta.url)),
+        osmPreview: fileURLToPath(new URL('./osm-preview.html', import.meta.url))
       }
     }
   }

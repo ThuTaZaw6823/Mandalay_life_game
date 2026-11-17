@@ -1,0 +1,10 @@
+[
+  {
+    "file": "models/mandalay-kiosk.glb",
+    "anchor": "spawn",
+    "offset": [18, 0, 12],
+    "rotationY": 0,
+    "scale": 1,
+    "note": "Fictional demonstration kiosk close to player spawn. Not an actual mapped business."
+  }
+]
