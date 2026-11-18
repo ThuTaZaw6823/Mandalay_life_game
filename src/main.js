@@ -1,12 +1,19 @@
+import { installV102AirportProtection, finalizeV102AirportProtection } from './v102-airport-protection.js'
+import { installV11GtaCity } from './v11-gta-city.js'
+import { installV92Environment } from './v92-environment.js'
+import { installMandalayRemaster } from './v80-city-remaster.js'
 import * as THREE from 'three'
 import { World, MAP_HALF, ROADS_X, ROADS_Z, RIVER } from './world.js'
 import { PALACE, BRIDGES } from './v5layout.js'
 import { CityLife } from './citylife.js'
+import { TrafficV9 } from './v9-traffic.js'
 import { TimeCycle } from './timecycle.js'
 import { formatClock } from './gameclock.js'
 import { WeatherSystem, nextWeather } from './weather.js'
 import { Character } from './character.js'
+import { isVehicleStopped, vehicleSpeedMph, gameAltitudeKm, FLIGHT_RULES } from './v106-flight-rules.js' // ML_V106_FLIGHT_RULES // ML_V1061_SMOOTH_FLIGHT
 import { Vehicles } from './vehicles.js'
+import { installAircraftV10 } from './aircraft-v10.js'
 import { TouchControls } from './touchcontrols.js'
 import {
   forward,
@@ -77,15 +84,23 @@ scene.add(sun)
 const camera = new THREE.PerspectiveCamera(
   58,
   innerWidth / innerHeight,
-  0.1,
+  0.65,
   2800
 )
 camera.position.set(5, 10, 18)
 
+installMandalayRemaster(World, { mobile: isMobile, fencesPresent: true, farmsPresent: true })
+installV92Environment(World)
+installV11GtaCity(World, { mobile: isMobile })
+installV102AirportProtection(World)
 const world = new World(scene)
+finalizeV102AirportProtection(world)
+
 const cityLife = new CityLife(world)
 const character = new Character(scene)
 const fleet = new Vehicles(scene)
+const aircraftV10 = installAircraftV10({ scene, world, fleet })
+const trafficV9 = new TrafficV9(world, cityLife, fleet)
 const dayNight = new TimeCycle(scene, renderer, sun, hemi)
 const weather = new WeatherSystem(scene)
 
@@ -134,6 +149,83 @@ const player = {
   fromDoor: null,
   roofPad: null
 }
+
+/* MANDALAY_V82_SAFE_START */
+// V8 city infill can cover previously saved player positions.
+// Resume at the nearest CLEAR road instead of inside newly generated walls.
+function v82FindSafeStreet (fromX, fromZ) {
+  const blockers = world.getCollisionBoxes(false).concat(cityLife.getCollisionBoxes(), trafficV9.getCollisionBoxes())
+  const palace = world.palace
+  const roadOffsets = [[0, 17], [0, -17], [17, 0], [-17, 0], [0, 0]]
+  let best = null
+  let bestD2 = Infinity
+  for (const x of ROADS_X) {
+    for (const z of ROADS_Z) {
+      for (const [dx, dz] of roadOffsets) {
+        const px = x + dx
+        const pz = z + dz
+        const d2 = (px - fromX) ** 2 + (pz - fromZ) ** 2
+        if (d2 >= bestD2) continue
+        if (Math.abs(px) > MAP_HALF - 28 || Math.abs(pz) > MAP_HALF - 28) continue
+        // The airfield, palace and moat are not public street spawn areas.
+        if (px > 255 && px < 635 && pz > -655 && pz < 255) continue
+        if (palace && Math.abs(px - palace.x) < palace.outerHalf + 13 &&
+            Math.abs(pz - palace.z) < palace.outerHalf + 13) continue
+        if (world.waterBlocked(px, pz)) continue
+        const radius = 2.7
+        const blocked = blockers.some(b => {
+          const bx = Math.max(b.minX, Math.min(px, b.maxX))
+          const bz = Math.max(b.minZ, Math.min(pz, b.maxZ))
+          return (px - bx) ** 2 + (pz - bz) ** 2 < radius ** 2
+        })
+        if (blocked) continue
+        bestD2 = d2
+        best = { x: px, z: pz }
+      }
+    }
+  }
+  return best
+}
+
+// Force a clear street spawn for V8/V8.1 only; preserve everything else.
+if (world.__v80) {
+  const v82Start = v82FindSafeStreet(player.x, player.z)
+  if (v82Start) {
+    player.x = v82Start.x
+    player.z = v82Start.z
+  }
+}
+
+// Emergency escape while playing: press P. Existing game controls untouched.
+function v82RescuePlayer () {
+  if (player.ride) {
+    notice('Exit the vehicle with E before using P to escape.')
+    return
+  }
+  const safe = v82FindSafeStreet(player.x, player.z)
+  if (!safe) {
+    notice('No clear road found. Try restarting the game.')
+    return
+  }
+  if (player.inside) {
+    player.inside = false
+    world.switchInterior(false)
+    fleet.setVisible(true)
+  }
+  player.roofPad = null
+  player.fromDoor = null
+  player.x = safe.x
+  player.z = safe.z
+  player.y = 0
+  player.vy = 0
+  player.grounded = true
+  character.setVisible(true)
+  character.setPosition(player.x, 0, player.z, player.yaw)
+  camera.position.set(player.x, 7, player.z + 10)
+  saveProgress()
+  notice('Moved to a clear street. Press P anytime you get stuck.')
+}
+/* END_MANDALAY_V82_SAFE_START */
 
 let orbit = 0
 let zoom = isMobile ? 15 : 12
@@ -292,6 +384,12 @@ function interact () {
   if (player.ride) {
     const v = player.ride
 
+    // V10.6: no one can disembark from ANY moving vehicle, including boats.
+    if (!isVehicleStopped(v)) {
+      notice(`Stop ${v.name} completely before exiting (${vehicleSpeedMph(v).toFixed(1)} mph).`)
+      return
+    }
+
     if (
       (v.kind === 'plane' || v.kind === 'helicopter') &&
       v.alt > 1 &&
@@ -347,18 +445,37 @@ function interact () {
             )
       )
 
-      player.x = pos?.[0] ?? v.x
-      player.z = pos?.[1] ?? v.z + 6
+      const v10Exit = v.v10 ? aircraftV10.safeExit(v, world) : null
+      player.x = v10Exit?.x ?? pos?.[0] ?? v.x
+      player.z = v10Exit?.z ?? pos?.[1] ?? v.z + 6
       player.y = 0
 
       notice(`Exited ${v.name}`)
     }
 
+    if (v.claimedFromTraffic) trafficV9.onLeaveVehicle(v)
     saveProgress()
     return
   }
 
   if (!player.roofPad) {
+    // V9: E boards the nearest moving or stopped road vehicle immediately.
+    const passingCar = trafficV9.nearest(player, 8.5)
+    if (passingCar) {
+      const claimed = trafficV9.claim(passingCar)
+      if (claimed) {
+        player.ride = claimed
+        player.x = claimed.x
+        player.z = claimed.z
+        player.y = 0
+        player.yaw = claimed.yaw
+        player.roofPad = null
+        character.setVisible(false)
+        orbit = 0
+        notice(`Driving ${claimed.name}. WASD steer, Shift fast, E exit.`)
+        return
+      }
+    }
     const door = world.getNearDoor(player)
 
     if (door) {
@@ -383,7 +500,7 @@ function interact () {
     }
   }
 
-  const vehicle = fleet.nearest(player, player.roofPad ? 9 : 6.5)
+  const vehicle = aircraftV10.nearestBoardable(player, fleet.nearest(player, player.roofPad ? 9 : 6.5))
 
   if (vehicle) {
     if (player.roofPad) {
@@ -566,6 +683,7 @@ function exitRoof () {
 }
 
 const action = {
+  KeyP: v82RescuePlayer,
   KeyE: interact,
   KeyF: delivery,
   KeyB: buy,
@@ -746,6 +864,13 @@ function addMobileExtraActions () {
 }
 
 addMobileExtraActions()
+aircraftV10.enableTravel({
+  player,
+  character,
+  notice,
+  saveProgress,
+  isReady: () => playing && !paused && !royalCityMap.isOpen()
+})
 
 function input () {
   const m = touch.getMoveState()
@@ -792,6 +917,7 @@ function simulate (dt) {
   processTouch()
 
   const i = input()
+  aircraftV10.update(dt, player.ride)
   clock += dt
 
   dayNight.update(dt, player)
@@ -799,7 +925,8 @@ function simulate (dt) {
   world.setWeather(weather.kind)
   cityLife.update(dt, dayNight.night, player.ride)
 
-  world.liveCollisionBoxes = cityLife.getCollisionBoxes()
+  trafficV9.update(dt, player.ride, player)
+  world.liveCollisionBoxes = cityLife.getCollisionBoxes().concat(trafficV9.getCollisionBoxes())
 
   if (player.ride) {
     const v = player.ride
@@ -965,9 +1092,10 @@ function simulate (dt) {
 function renderCamera (dt) {
   const a = player.yaw + orbit
 
-  const focus = new THREE.Vector3(player.x, player.y + 1.85, player.z)
+  const focusHeight = player.ride?.batch1 ? Math.max(2.6, player.ride.length * .14) : 1.85
+  const focus = new THREE.Vector3(player.x, player.y + focusHeight, player.z)
 
-  const range = player.inside ? Math.min(zoom, 8) : zoom
+  const range = player.inside ? Math.min(zoom, 8) : player.ride?.batch1 ? Math.max(zoom, player.ride.length * .88) : zoom
 
   const altitude = Math.max(2.5, range * (0.52 + verticalAngle))
 
@@ -1142,7 +1270,11 @@ function hud () {
   $('stateDetail').textContent = player.inside
     ? world.getInteriorLabel()
     : player.ride
-    ? 'DRIVE · EXPLORE · E TO EXIT'
+    ? (player.ride.kind === 'plane'
+        ? `${vehicleSpeedMph(player.ride).toFixed(1)} mph · ALT ${gameAltitudeKm(player.ride.alt).toFixed(2)} km · GEAR ${(player.ride.alt || 0) >= FLIGHT_RULES.gearAltitude ? 'UP' : 'DOWN'} · ${player.ride.flightPhase || 'GROUND'}` // ML_V1062_PLANE_SPEED
+        : player.ride.kind === 'helicopter'
+        ? `${vehicleSpeedMph(player.ride).toFixed(1)} mph · ALT ${gameAltitudeKm(player.ride.alt).toFixed(2)} km · ${player.ride.onPad || (player.ride.alt || 0) <= 0.3 ? 'LANDED' : 'FLIGHT'}`
+        : `${vehicleSpeedMph(player.ride).toFixed(1)} mph · STOP TO EXIT`)
     : `WALK · RUN · JUMP · ${character.avatarName.toUpperCase()}`
 
   $('location').textContent = player.inside
@@ -1151,7 +1283,7 @@ function hud () {
     ? 'IRRAWADDY RIVERSIDE'
     : Math.abs(player.x - PALACE.x) < 215 && Math.abs(player.z - PALACE.z) < 215
     ? 'MANDALAY ROYAL PALACE'
-    : player.x > 310 && player.z < 0
+    : player.x > 255 && player.x < 635 && player.z > -655 && player.z < 255
     ? 'MANDALAY INTERNATIONAL AIRFIELD'
     : Math.abs(player.x) > 220 || Math.abs(player.z) > 220
     ? 'MANDALAY · OUTER DISTRICT'
@@ -1174,11 +1306,22 @@ function hud () {
         }`
       : 'Find the door to exit / stairs to change floors'
   } else if (player.ride) {
-    hint = 'E / INTERACT to exit vehicle'
+    hint = (player.ride.kind === 'plane' || player.ride.kind === 'helicopter') &&
+      player.ride.alt > 1 &&
+      !player.ride.onPad
+      ? 'Land aircraft before exiting (Shift to descend)'
+      : isVehicleStopped(player.ride)
+      ? 'E / INTERACT to exit vehicle'
+      : `Moving ${vehicleSpeedMph(player.ride).toFixed(1)} mph · STOP before exit`
+  } else if (trafficV9.nearest(player, 8.5)) {
+    hint = `E to drive ${trafficV9.nearest(player, 8.5).name}`
   } else if (world.getNearDoor(player)) {
     hint = `E to enter ${world.getNearDoor(player).name}`
-  } else if (fleet.nearest(player, 6.5)) {
-    hint = `E to ride ${fleet.nearest(player, 6.5).name}`
+  } else {
+    const nearBoardable = aircraftV10.nearestBoardable(player, fleet.nearest(player, 6.5))
+    if (nearBoardable) {
+      hint = `E to ride ${nearBoardable.name}`
+    }
   }
 
   if (nearPlot()) {

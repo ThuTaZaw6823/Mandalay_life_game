@@ -25,7 +25,7 @@ function registerLocalAppProtocol(){
 function createWindow(){
   const win = new BrowserWindow({
     width:1440,height:900,minWidth:950,minHeight:630,
-    backgroundColor:'#253d4a',title:'Mandalay Life v4.2',autoHideMenuBar:true,
+    backgroundColor:'#253d4a',title:'Mandalay Life V10.6',autoHideMenuBar:true,
     webPreferences:{nodeIntegration:false,contextIsolation:true,sandbox:true,webSecurity:true}
   });
   win.loadURL('mandalay://app/index.html');

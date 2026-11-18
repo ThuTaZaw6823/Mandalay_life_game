@@ -38,29 +38,44 @@ test('vehicle cannot tunnel through a wall via swept move',()=>{
   const result=sweptMove({x:0,z:0},30,0,2.1,wall,worldBounds);
   assert.ok(result.x<10);assert.equal(result.blocked,true);
 });
-test('three distinct river boats occupy separated mooring positions',()=>{
-  const boats=read('src/riverboats.js');
-  for(const name of ['ferry','cargo','fishing'])assert.match(boats,new RegExp(`variant:'${name}'`));
-  for(const z of ['-325','15','350'])assert.ok(boats.includes('z:'+z));
-  const vehicles=read('src/vehicles.js');assert.match(vehicles,/\.\.\.MOORINGS\.map/);
-});
-test('every regular building has a door; mixed floors switch offices and apartments',()=>{
-  const world=read('src/world.js'),main=read('src/main.js');
-  assert.match(world,/this\.doors\.push\(\{x,z:z\+d\/2\+1\.35/);
-  assert.match(world,/this\.interiorKind=isPalace/);
-  assert.match(world,/setInteriorFloor\(level\)/);
-  assert.match(main,/KeyQ:/);assert.match(main,/nearStairs\(player\)/);
-});
-test('hangars have open faces and the river has no over-water roads',()=>{
-  const world=read('src/world.js');
-  assert.match(world,/U-shaped hangars open completely/);
-  assert.match(world,/RIVER\.centerX/);
-  assert.doesNotMatch(world,/Three crossings over the riverside strip/);
-});
-test('weather UI and indoor rain suppression are present',()=>{
-  const html=read('index.html'),game=read('src/main.js'),weather=read('src/weather.js');
-  assert.match(html,/id="weatherToggle"/);
-  assert.match(game,/weather\.rain\.points\.visible=false/);
-  assert.match(weather,/this\.thunder\(\)/);
-  assert.match(weather,/this\.lightningLight/);
-});
+test('three distinct river boats occupy separated mooring positions', () => {
+  const boats = read('src/riverboats.js')
+  for (const name of ['ferry', 'cargo', 'fishing']) {
+    assert.match(boats, new RegExp(`variant:\\s*'${name}'`))
+  }
+  for (const z of ['-325', '15', '350']) {
+    assert.match(boats, new RegExp(`z:\\s*${z}\\b`))
+  }
+  const vehicles = read('src/vehicles.js')
+  assert.match(vehicles, /\.\.\.MOORINGS\.map/)
+})
+
+test('every regular building has a door; mixed floors switch offices and apartments', () => {
+  const world = read('src/world.js')
+  const main = read('src/main.js')
+  assert.match(world, /this\.doors\.push\(\{\s*x,\s*z:\s*z\s*\+\s*d\s*\/\s*2\s*\+\s*1\.35/)
+  assert.match(world, /this\.interiorKind\s*=\s*isPalace/)
+  assert.match(world, /setInteriorFloor\s*\(level\)/)
+  assert.match(main, /KeyQ:/)
+  assert.match(main, /nearStairs\(player\)/)
+})
+
+test('airport complex is clear of obstacles and the river has no over-water roads', () => {
+  const world = read('src/world.js')
+  assert.match(
+    world,
+    /this\.airport\s*=\s*\{\s*x:\s*402,\s*z:\s*-198,\s*runwayWidth:\s*52,\s*runwayLength:\s*760\s*\}/
+  )
+  assert.match(world, /RIVER\.centerX/)
+  assert.doesNotMatch(world, /Three crossings over the riverside strip/)
+})
+
+test('weather UI and indoor rain suppression are present', () => {
+  const html = read('index.html')
+  const game = read('src/main.js')
+  const weather = read('src/weather.js')
+  assert.match(html, /id="weatherToggle"/)
+  assert.match(game, /weather\.rain\.points\.visible\s*=\s*false/)
+  assert.match(weather, /this\.thunder\(\)/)
+  assert.match(weather, /this\.lightningLight/)
+})

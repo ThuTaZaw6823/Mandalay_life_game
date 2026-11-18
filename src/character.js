@@ -1,24 +1,25 @@
 import * as THREE from 'three'
+import { decorateMandalayHero } from './v104-character-visuals.js' // ML_V104_CHARACTER_VISUALS
 
 // V7 articulated character system
 const AVATARS = [
   {
     id: 'shirt_male',
-    label: 'Classic Collared Shirt',
-    shirt: 0xe3eaf1,
-    pants: 0x354357,
+    label: 'Mandalay Streetwear — Male',
+    shirt: 0x292d37,
+    pants: 0x373a42,
     skin: 0xd6a080,
-    hair: 0x1b2026,
-    shoes: 0x303943
+    hair: 0x171922,
+    shoes: 0xf2f2f3
   },
   {
     id: 'blazer_female',
-    label: 'Royal Blazer',
-    shirt: 0x943c4a,
-    pants: 0x26313b,
+    label: 'Mandalay Streetwear — Female',
+    shirt: 0xd4c8d4,
+    pants: 0x45404b,
     skin: 0xe1af90,
-    hair: 0x292020,
-    shoes: 0x242326
+    hair: 0x252029,
+    shoes: 0xf4f1ec
   },
   {
     id: 'jacket_senior',
@@ -239,6 +240,15 @@ export function buildHumanAvatar (parent, preset) {
   }
 
   poseRig(rig, 'standing', 0, 0, 1)
+
+  // V10.4: Keep the same limb rig and animation functions.
+  if (preset.id === 'shirt_male' || preset.id === 'blazer_female') {
+    decorateMandalayHero(
+      rig,
+      preset,
+      preset.id === 'blazer_female' ? 'female' : 'male'
+    )
+  }
 
   return { root, rig }
 }

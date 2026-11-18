@@ -1,3 +1,4 @@
+import { upgradeCityGraphics, upgradeFarmland, upgradeTreeCrown, upgradeBuildingTrim, addHouseFence } from './v72-graphics.js'
 import * as THREE from 'three'
 import { C, mat, piece, group, sign } from './visual.js'
 import { box, clamp } from './physics.js'
@@ -12,6 +13,7 @@ import {
   padAt,
   onPalaceRoad
 } from './v5layout.js'
+import { decorateResidence, populateEmptyBlocks, addFarmland } from './v71-city.js'
 
 export { onPalaceRoad }
 
@@ -210,6 +212,9 @@ export class World {
     this.makeTerrain()
     this.makeDistricts()
     this.makeOuterDistricts()
+    populateEmptyBlocks(this, ROADS_X, ROADS_Z)
+    upgradeCityGraphics(this, ROADS_X, ROADS_Z)
+    addFarmland(this)
     this.makeRoofTowers()
     this.makePalace()
     this.finalizeWindows()
@@ -320,64 +325,107 @@ export class World {
       [1.4, 0.16, MAP_HALF * 2 - 20]
     )
 
+    // V7.1: one continuous street surface at junctions, with open curb gaps.
+    // The airport is a no-street zone; its own runway and taxiways are below.
     const roadMarks = []
+    const roadBoxes = []
+    const curbBoxes = []
     const end = MAP_HALF - 22
     const palaceNorth = PALACE.z - PALACE.outerHalf
     const palaceSouth = PALACE.z + PALACE.outerHalf
+    const airportZone = { minX: 270, maxX: 615, minZ: -625, maxZ: 235 }
+    const airportHere = (x, z, pad = 0) =>
+      x >= airportZone.minX - pad && x <= airportZone.maxX + pad &&
+      z >= airportZone.minZ - pad && z <= airportZone.maxZ + pad
+    const trim = (spans, from, to) => spans.flatMap(([a, b]) => {
+      if (to <= a || from >= b) return [[a, b]]
+      const chunks = []
+      if (from - a > 0.01) chunks.push([a, from])
+      if (b - to > 0.01) chunks.push([to, b])
+      return chunks
+    })
+    const isCrossing = (x, z) =>
+      !inPalaceSquare(x, z, 4) && !airportHere(x, z, 9)
 
+    // North-south roads are the junction base; east-west roads stop at their edges.
     for (const x of ROADS_X) {
-      const sections =
-        Math.abs(x - PALACE.x) < PALACE.outerHalf + 5
-          ? [
-              [-end, palaceNorth],
-              [palaceSouth, end]
-            ]
-          : [[-end, end]]
-      for (const [a, b] of sections) {
+      let spans = Math.abs(x - PALACE.x) < PALACE.outerHalf + 5
+        ? [[-end, palaceNorth], [palaceSouth, end]] : [[-end, end]]
+      if (x >= airportZone.minX - 10 && x <= airportZone.maxX + 10)
+        spans = trim(spans, airportZone.minZ - 10, airportZone.maxZ + 10)
+      for (const [a, b] of spans) {
         if (b <= a) continue
-        piece(city, 'box', P.road, [x, 0.032, (a + b) / 2], [13, 0.06, b - a])
+        roadBoxes.push([x, 0.037, (a + b) / 2, 13, 0.07, b - a])
         for (const dx of [-7.7, 7.7]) {
-          piece(
-            city,
-            'box',
-            P.pavement,
-            [x + dx, 0.12, (a + b) / 2],
-            [2.7, 0.18, b - a]
-          )
+          let curbSpans = [[a, b]]
+          for (const z of ROADS_Z) {
+            if (isCrossing(x, z)) curbSpans = trim(curbSpans, z - 9.35, z + 9.35)
+          }
+          for (const [s, e] of curbSpans)
+            curbBoxes.push([x + dx, 0.12, (s + e) / 2, 2.7, 0.18, e - s])
         }
       }
       for (let z = -end; z <= end; z += 15) {
-        if (!inPalaceSquare(x, z, 4))
-          roadMarks.push([x, 0.071, z, 0.22, 0.015, 5])
+        if (spans.some(([a, b]) => z >= a + 3 && z <= b - 3) &&
+            !ROADS_Z.some(v => Math.abs(z - v) < 11) &&
+            !airportHere(x, z, 10))
+          roadMarks.push([x, 0.08, z, 0.22, 0.015, 5])
       }
     }
 
+    // East-west roads, crossing lanes and curbs all have actual gaps at junctions.
     for (const z of ROADS_Z) {
-      const sections =
-        Math.abs(z - PALACE.z) < PALACE.outerHalf + 5
-          ? [
-              [-830, PALACE.x - PALACE.outerHalf],
-              [PALACE.x + PALACE.outerHalf, end]
-            ]
-          : [[-830, end]]
-      for (const [a, b] of sections) {
+      let spans = Math.abs(z - PALACE.z) < PALACE.outerHalf + 5
+        ? [[-830, PALACE.x - PALACE.outerHalf],
+            [PALACE.x + PALACE.outerHalf, end]] : [[-830, end]]
+      if (z >= airportZone.minZ - 10 && z <= airportZone.maxZ + 10)
+        spans = trim(spans, airportZone.minX - 10, airportZone.maxX + 10)
+      for (const [a, b] of spans) {
         if (b <= a) continue
-        piece(city, 'box', P.road, [(a + b) / 2, 0.037, z], [b - a, 0.08, 13])
+        let roadSpans = [[a, b]]
+        let curbSpans = [[a, b]]
+        for (const x of ROADS_X) {
+          if (!isCrossing(x, z)) continue
+          roadSpans = trim(roadSpans, x - 6.5, x + 6.5)
+          curbSpans = trim(curbSpans, x - 9.35, x + 9.35)
+        }
+        for (const [s, e] of roadSpans)
+          roadBoxes.push([(s + e) / 2, 0.037, z, e - s, 0.07, 13])
         for (const dz of [-7.7, 7.7]) {
-          piece(
-            city,
-            'box',
-            P.pavement,
-            [(a + b) / 2, 0.12, z + dz],
-            [b - a, 0.18, 2.7]
-          )
+          for (const [s, e] of curbSpans)
+            curbBoxes.push([(s + e) / 2, 0.12, z + dz, e - s, 0.18, 2.7])
         }
       }
       for (let x = -826; x <= end; x += 15) {
-        if (!inPalaceSquare(x, z, 4))
-          roadMarks.push([x, 0.083, z, 5, 0.015, 0.22])
+        if (spans.some(([a, b]) => x >= a + 3 && x <= b - 3) &&
+            !ROADS_X.some(v => Math.abs(x - v) < 11) &&
+            !airportHere(x, z, 10))
+          roadMarks.push([x, 0.08, z, 5, 0.015, 0.22])
       }
     }
+
+    // Instancing keeps thousands of short curb sections efficient on Mac and mobile.
+    const renderBoxes = (boxes, material) => {
+      if (!boxes.length) return
+      const mesh = new THREE.InstancedMesh(
+        new THREE.BoxGeometry(1, 1, 1), material, boxes.length
+      )
+      const matrix = new THREE.Matrix4()
+      const rotation = new THREE.Quaternion()
+      const position = new THREE.Vector3()
+      const scale = new THREE.Vector3()
+      boxes.forEach(([x, y, z, w, h, d], i) => {
+        position.set(x, y, z)
+        scale.set(w, h, d)
+        matrix.compose(position, rotation, scale)
+        mesh.setMatrixAt(i, matrix)
+      })
+      mesh.instanceMatrix.needsUpdate = true
+      mesh.receiveShadow = true
+      city.add(mesh)
+    }
+    renderBoxes(roadBoxes, P.road)
+    renderBoxes(curbBoxes, P.pavement)
 
     const laneGeometry = new THREE.BoxGeometry(1, 1, 1)
     const lanes = new THREE.InstancedMesh(
@@ -419,28 +467,28 @@ export class World {
     }
 
     // Modern Mandalay International Airport Complex
-    this.airport = { x: 399, z: -199, runwayWidth: 52, runwayLength: 380 }
-    piece(city, 'box', 0x7a9660, [425, 0.06, -198], [185, 0.12, 430])
+    this.airport = { x: 402, z: -198, runwayWidth: 52, runwayLength: 760 }
+    piece(city, 'box', 0x7a9660, [425, 0.06, -198], [185, 0.12, 850])
     const fieldColors = [0x6b8e4e, 0x8ea868, 0x9c8b68, 0x5d7c47]
     for (let fi = 0; fi < 10; fi++) {
       const fx = 535 + (fi % 2) * 42
       const fz = -380 + Math.floor(fi / 2) * 85
       piece(city, 'box', fieldColors[fi % 4], [fx, 0.05, fz], [38, 0.08, 78])
     }
-    piece(city, 'box', 0x38444f, [402, 0.15, -198], [52, 0.12, 380])
-    for (let z = -372; z <= -25; z += 23)
+    piece(city, 'box', 0x38444f, [402, 0.15, -198], [52, 0.12, 760])
+    for (let z = -563; z <= 168; z += 23)
       piece(city, 'box', 0xf7e9cb, [402, 0.228, z], [0.7, 0.045, 11])
     for (const dx of [-23.5, 23.5])
-      piece(city, 'box', 0xffffff, [402 + dx, 0.24, -198], [0.42, 0.042, 368])
-    for (const z of [-370, -28])
+      piece(city, 'box', 0xffffff, [402 + dx, 0.24, -198], [0.42, 0.042, 748])
+    for (const z of [-562, 166])
       for (let dx = -17; dx <= 17; dx += 8)
         piece(city, 'box', 0xffffff, [402 + dx, 0.239, z], [4, 0.05, 7])
 
-    piece(city, 'box', 0x64748b, [362, 0.16, -198], [16, 0.12, 356])
-    piece(city, 'box', 0x64748b, [442, 0.16, -198], [14, 0.12, 340])
-    for (const tz of [-350, -285, -220, -155, -90, -45]) {
-      piece(city, 'box', 0x64748b, [382, 0.16, tz], [26, 0.12, 11])
-      piece(city, 'box', 0x64748b, [422, 0.16, tz], [24, 0.12, 10])
+    piece(city, 'box', 0x64748b, [362, 0.16, -198], [16, 0.12, 748])
+    piece(city, 'box', 0x64748b, [442, 0.16, -198], [14, 0.12, 748])
+    for (const tz of [-520, -380, -246, -108, 35, 150]) {
+      piece(city, 'box', 0x64748b, [373, 0.16, tz], [6, 0.12, 11])
+      piece(city, 'box', 0x64748b, [431.5, 0.16, tz], [7, 0.12, 10])
     }
     piece(city, 'box', 0x94a3b8, [468, 0.18, -198], [54, 0.14, 210])
     piece(city, 'box', 0xe7dcc8, [488, 5.5, -198], [26, 11, 115], {
@@ -455,19 +503,26 @@ export class World {
     piece(city, 'box', 0x334155, [516, 0.14, -198], [24, 0.1, 95])
     this.addObstacle(488, -198, 26, 115, 0, 12.5)
 
+    // V7.1: larger, more numerous clouds; one instanced mesh per cloud.
     this.cloudMaterial = mat(0xf1f2ef, { roughness: 1 })
-    for (let i = 0; i < 54; i++) {
-      const x = -810 + this.rng() * 1700
-      const z = -900 + this.rng() * 1850
-      const cloud = group(city, x, 70 + this.rng() * 34, z)
-      for (let k = 0; k < 4; k++)
-        piece(
-          cloud,
-          'sphere',
-          this.cloudMaterial,
-          [k * 4.6 - 6, (k % 2) * 1.1, 0],
-          [12, 4.7, 6.4]
+    const cloudGeo = new THREE.SphereGeometry(1, 8, 6)
+    const cloudRotation = new THREE.Quaternion()
+    for (let i = 0; i < 110; i++) {
+      const x = -1160 + this.rng() * 2340
+      const z = -1190 + this.rng() * 2420
+      const cloud = group(city, x, 102 + this.rng() * 54, z)
+      const puffs = new THREE.InstancedMesh(cloudGeo, this.cloudMaterial, 6)
+      const transform = new THREE.Matrix4()
+      for (let k = 0; k < 6; k++) {
+        transform.compose(
+          new THREE.Vector3((k - 2.5) * 10, (k % 3) * 1.4, (k % 2) * 5),
+          cloudRotation,
+          new THREE.Vector3(19 + this.rng() * 11, 6.5 + this.rng() * 3, 11 + this.rng() * 7)
         )
+        puffs.setMatrixAt(k, transform)
+      }
+      puffs.instanceMatrix.needsUpdate = true
+      cloud.add(puffs)
       this.clouds.push({ root: cloud, x, phase: this.rng() * 6 })
     }
   }
@@ -487,20 +542,7 @@ export class World {
       { cast: true }
     )
     const crown = group(g, 0, 2.9 * s, 0)
-    for (const [px, py, pz, r] of [
-      [0, 0.18, 0, 2.7],
-      [-1.05, -0.18, 0.18, 2.1],
-      [0.85, -0.15, -0.56, 1.9],
-      [0.3, 0.78, 0.5, 1.75]
-    ]) {
-      piece(
-        crown,
-        'sphere',
-        fruit ? 0x82a56a : C.leaf2,
-        [px * s, py * s, pz * s],
-        [r * s, r * 0.84 * s, r * s]
-      )
-    }
+    upgradeTreeCrown(crown, s, fruit, Math.abs(Math.round(x * 17 + z * 31)) % 4)
     if (fruit) {
       for (const [px, py, pz] of [
         [-0.65, 0, 1],
@@ -556,6 +598,7 @@ export class World {
       const variant = style % 4
       const villa = buildModernVilla(root, variant)
       villa.scale.set(w / 11, 1, d / 9)
+      decorateResidence(root, w, d)
       this.addObstacle(x, z, w, d, 0.15, h + 1)
       const floors = variant === 0 ? 2 : 1
       this.doors.push({
@@ -634,6 +677,7 @@ export class World {
         [Math.min(w + 1, 12), 0.3, 0.48]
       )
     }
+    upgradeBuildingTrim(root, w, d, h, style, ROOFTOPS.some(p => Math.hypot(x - p.x, z - p.z) < 19))
     this.addObstacle(x, z, w, d, 0.12, h + 1)
     if (enterable)
       sign(
@@ -713,7 +757,7 @@ export class World {
     for (const x of centers) {
       for (const z of rows) {
         if (x >= -117 && x <= 147 && z >= -141 && z <= 123) continue
-        if (x > 290 && z < -2 && z > -399) continue
+        if (x > 270 && x < 615 && z > -625 && z < 235) continue
         if (inPalaceSquare(x, z, 17)) continue
         if (ROOFTOPS.some(p => Math.hypot(x - p.x, z - p.z) < 41)) continue
         if (Math.abs(x) > 590 || Math.abs(z) > 590) {
@@ -1472,6 +1516,7 @@ export class World {
     )
     this.houseGroup = group(r)
     this.gardenGroup = group(r)
+    decorateResidence(r, p.w - 1.0, p.d - 1.0)
   }
 
   updatePlot (save) {

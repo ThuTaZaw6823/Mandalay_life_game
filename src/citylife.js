@@ -100,9 +100,9 @@ export class CityLife {
     }
     v.x = axis === 'x' ? -340 + random() * 640 : road + (sign > 0 ? 2.4 : -2.4)
     v.z = axis === 'z' ? -340 + random() * 640 : road + (sign > 0 ? 2.4 : -2.4)
-    if (v.x > 308 && v.z < -5) {
-      if (axis === 'x') v.x = 280
-      else v.z = 90
+    if (v.x > 270 && v.x < 615 && v.z < 235 && v.z > -635) {
+      if (axis === 'x') v.x = -240
+      else v.z = 260
     }
     const color =
       kind === 'police'
@@ -239,7 +239,7 @@ export class CityLife {
       }
       p.x = axis === 'z' ? road + side * 8.3 : -290 + random() * 590
       p.z = axis === 'x' ? road + side * 8.3 : -300 + random() * 600
-      if (p.x > 320 && p.z < -5) p.z = 100
+      if (p.x > 270 && p.x < 615 && p.z < 235 && p.z > -635) p.z = 260
       const root = group(this.root, p.x, 0, p.z)
       const clothes = colors[i % colors.length]
       piece(root, 'sphere', 0xc69775, [0, 2.08, 0], [0.44, 0.51, 0.43], {
@@ -331,7 +331,7 @@ export class CityLife {
       else if (v.x < -358) v.x = 440
       if (v.z > 450) v.z = -360
       else if (v.z < -380) v.z = 442
-      if (v.x > 316 && v.z < -8) {
+      if (v.x > 270 && v.x < 615 && v.z < 235 && v.z > -635) {
         if (v.axis === 'x') v.x = -240
         else v.z = 90
       }
@@ -347,6 +347,7 @@ export class CityLife {
       else if (p.x < -325) p.x = 325
       if (p.z > 335) p.z = -335
       else if (p.z < -335) p.z = 335
+      if (p.x > 270 && p.x < 615 && p.z < 235 && p.z > -635) p.z = 260
       p.root.position.set(p.x, 0, p.z)
       // Fixed: match vehicle -yaw convention so pedestrians face forward along -Z local
       p.root.rotation.y = -axisDirection(p.axis, p.sign)

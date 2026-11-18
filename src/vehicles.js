@@ -1,4 +1,5 @@
 import * as THREE from 'three'
+import { FLIGHT_RULES, syncLandingGear, smoothPlaneVelocity, planeTargetSpeedMph, advancePlaneTouchdown } from './v106-flight-rules.js' // ML_V106_FLIGHT_RULES // ML_V1061_SMOOTH_FLIGHT // ML_V1062_PLANE_SPEED // ML_V1063_ROLLING_LANDING
 import { C, mat, piece, group } from './visual.js'
 import {
   distance2,
@@ -1231,8 +1232,10 @@ export class Vehicles {
     })
     v.lampMaterial = material
     v.lamps = group(v.modelHolder)
-    for (const x of xSpread ? [-xSpread, xSpread] : [0]) {
-      piece(v.lamps, 'sphere', material, [x, y, -dist], [0.24, 0.16, 0.14])
+    if (!v.v10 && !v.modelType && v.kind !== 'car' && v.kind !== 'bus') {
+      for (const x of xSpread ? [-xSpread, xSpread] : [0]) {
+        piece(v.lamps, 'sphere', material, [x, y, -dist], [0.24, 0.16, 0.14])
+      }
     }
     v.spot = new THREE.SpotLight(0xfff3cc, 0, 82, 0.36, 0.48, 1.4)
     v.spot.position.set(0, y + 0.18, -dist)
@@ -1265,6 +1268,8 @@ export class Vehicles {
     let found = null,
       md = Infinity
     for (const v of this.vehicles) {
+      const vy = v.kind === 'plane' || v.kind === 'helicopter' ? v.alt || 0 : 0
+      if (Number.isFinite(pos.y) && Math.abs(vy - pos.y) > 3.5) continue
       const d = distance2(v, pos)
       const limit =
         v.kind === 'boat' && pos.x < RIVER.maxX + 16 ? Math.max(max, 25) : max
@@ -1293,10 +1298,25 @@ export class Vehicles {
     const turning = (input.right ? 1 : 0) - (input.left ? 1 : 0)
     v.yaw = turnYaw(v.yaw, turning, v.turn, dt)
 
-    const max = v.speed * (input.fast && v.kind !== 'plane' ? 1.2 : 1)
-    const target = move >= 0 ? move * max : move * max * 0.5
-    v.velocity += (target - v.velocity) * Math.min(1, dt * 4)
-    if (Math.abs(v.velocity) < 0.07) v.velocity = 0
+    // V10.6.3: 50 mph takeoff, 200 mph max; smooth throttle and rolling landing.
+    const isPlane = v.kind === 'plane'
+    const landingApproach = isPlane && v.alt > 0.3 && input.fast && !input.jump
+    if (isPlane) {
+      const target = planeTargetSpeedMph(v, input) * 0.44704
+      // After touchdown, releasing W coasts gradually; S brakes deliberately.
+      const rate = landingApproach
+        ? FLIGHT_RULES.planeLandingDecelMphPerSecond
+        : input.back ? FLIGHT_RULES.planeBrakeMphPerSecond
+          : v.alt <= 0.3 && !input.forward
+            ? FLIGHT_RULES.planeGroundCoastMphPerSecond : null
+      v.velocity = smoothPlaneVelocity(v.velocity, target, dt, rate)
+      if (v.velocity < 0.07 && target === 0) v.velocity = 0
+    } else {
+      const max = v.speed * (input.fast ? 1.2 : 1)
+      const target = move >= 0 ? move * max : move * max * 0.5
+      v.velocity += (target - v.velocity) * Math.min(1, dt * 4)
+      if (Math.abs(v.velocity) < 0.07) v.velocity = 0
+    }
 
     let climbInput = 0
     let floor = 0
@@ -1310,16 +1330,53 @@ export class Vehicles {
       )
 
       climbInput = (input.jump ? 1 : 0) - (input.fast ? 1 : 0)
+      // V10.6.3: Space only lifts fixed-wing planes at >=50 mph.
+      // Floating-point tolerance allows exactly 50.0 mph.
+      if (v.kind === 'plane' && climbInput > 0 &&
+          v.alt <= floor + 0.2 &&
+          Math.abs(v.velocity) + 1e-6 < FLIGHT_RULES.takeoffSpeed) {
+        climbInput = 0
+      }
       let climbRate = v.kind === 'helicopter' ? 13 : 20
       if (climbInput < 0 && v.alt - floor < 4.5) {
         climbRate *= Math.max(0.22, (v.alt - floor) / 4.5)
       }
-      v.alt = clamp(v.alt + climbInput * climbRate * dt, floor, 240)
+      // No fixed-wing touchdown above 25 mph: hold slightly above the ground
+      // until landing approach slows the plane. Other aircraft are unchanged.
+      let nextAltitude = clamp(v.alt + climbInput * climbRate * dt, floor, FLIGHT_RULES.maxAltitude)
+      if (v.kind === 'plane' && climbInput < 0 &&
+          v.alt > floor + 0.25 &&
+          v.velocity > FLIGHT_RULES.planeLandingSpeed + 0.0001) {
+        nextAltitude = Math.max(nextAltitude, Math.min(v.alt, floor + 0.7))
+      }
+      // REAR_GEAR -> NOSE_GEAR -> ROLLOUT; preserve forward momentum.
+      if (v.kind === 'plane') {
+        nextAltitude = advancePlaneTouchdown(v, nextAltitude, floor, climbInput, dt)
+      }
+      v.alt = nextAltitude
+      if (v.kind === 'plane') {
+        v.flightPhase = v.touchdownStage === 'REAR_GEAR' ? 'REAR GEAR'
+          : v.touchdownStage === 'NOSE_GEAR' ? 'NOSE GEAR'
+          : v.touchdownStage === 'ROLLOUT' ? 'ROLLOUT'
+          : v.alt <= floor + 0.3 ? 'GROUND'
+          : landingApproach ? 'LANDING'
+          : v.velocity < FLIGHT_RULES.planeMinAirborneMph * 0.44704 - 0.01
+            ? 'TAKEOFF' : 'FLIGHT'
+      }
       v.onPad =
         v.kind === 'helicopter' && pad && Math.abs(v.alt - padSurfaceY) < 0.22
           ? { ...pad, y: padSurfaceY }
           : null
     }
+
+    // Helicopters must lift off before W/S can move them horizontally.
+    if (v.kind === 'helicopter' &&
+        (v.alt <= floor + FLIGHT_RULES.heliHorizontalClearance || v.onPad)) {
+      v.velocity = 0
+    }
+    // Gear UP at 0.50 game km (50 units); DOWN on descent below 0.50 km.
+    // Never force the plane's velocity to 30 mph in a single frame.
+    if (v.kind === 'plane') syncLandingGear(v)
 
     const direction = forward(v.yaw),
       dx = direction.x * v.velocity * dt,
@@ -1380,12 +1437,21 @@ export class Vehicles {
     }
 
     if (v.kind === 'plane') {
-      const targetPitch = v.alt > 0.2 ? climbInput * 0.22 : 0
+      const touchdownActive = v.touchdownStage === 'REAR_GEAR' ||
+        v.touchdownStage === 'NOSE_GEAR'
+      const flare = !touchdownActive && climbInput < 0 &&
+        v.alt > floor + 0.2 && v.alt < floor + 3 &&
+        v.velocity <= FLIGHT_RULES.planeLandingSpeed + 0.001
+      // Positive X pitch raises the nose (aircraft points along -Z).
+      // Rear/main wheels touch while the nose is raised; front wheel lowers later.
+      const targetPitch = touchdownActive ? v.touchdownPitch
+        : flare ? FLIGHT_RULES.touchdownNoseUpRadians
+          : v.alt > 0.2 ? climbInput * 0.22 : 0
       const targetRoll = v.alt > 0.5 ? -turning * 0.34 : 0
       v.pitchAngle = THREE.MathUtils.lerp(
         v.pitchAngle,
         targetPitch,
-        Math.min(1, dt * 5)
+        Math.min(1, dt * (touchdownActive || flare ? 14 : 5))
       )
       v.rollAngle = THREE.MathUtils.lerp(
         v.rollAngle,

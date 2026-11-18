@@ -17,7 +17,7 @@ const palette = {
 function createLandmarks (scene, world) {
   const root = new THREE.Group()
   root.name = 'Mandalay Cultural Landmarks'
-  scene.add(root)
+  ;(world?.city || scene).add(root)
   const materials = new Map()
   const material = hex => {
     if (!materials.has(hex)) materials.set(hex, new THREE.MeshStandardMaterial({
